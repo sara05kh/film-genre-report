@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Film Genre Statistics & Spatial Intelligence Dashboard (1995-2018)</title>
+    
+    <!-- External libraries used for styling, charts, and 3D rendering. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            background-color: #0b0f17;
+            color: #f1f5f9;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            overflow-x: hidden;
+        }
+        
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s ease-in-out;
+        }
+        .glass-card:hover {
+            border-color: rgba(59, 130, 246, 0.4);
+            transform: translateY(-2px);
+        }
+
+        /* Tooltip displayed when a 3D data stack is hovered. */
+        #webgl-tooltip {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(8px);
+            padding: 12px 18px;
+            border-radius: 8px;
+            pointer-events: none;
+            display: none;
+            font-size: 13px;
+            border-left: 4px solid #3b82f6;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8);
+            z-index: 50;
+        }
+
+        /* Match browser scrollbars to the dashboard theme. */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b0f17;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Dashboard title and hosted-app link. -->
+    <header class="glass-panel sticky top-0 z-40 px-6 py-4 mx-4 mt-3 flex flex-wrap justify-between items-center gap-4">
+        <div class="flex items-center gap-3">
+            <div class="p-2.5 bg-blue-600/20 text-blue-400 rounded-lg border border-blue-500/30">
+                <i class="fa-solid fa-film text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                    Film Genre Trends
+                    <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">1995–2018</span>
+                </h1>
+                <p class="text-xs text-slate-400">Interactive 3D Film Genre Trends and Performance Analysis</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <a href="https://sara05kh.github.io/film-genre-report/" target="_blank" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-blue-600/30 transition flex items-center gap-2">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i> Open Hosted App
+            </a>
+        </div>
+    </header>
+
+    <!-- Main dashboard layout: filters alongside the visualizations. -->
+    <main class="flex-1 px-4 py-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+        <!-- Filter controls. -->
+        <aside class="lg:col-span-3 glass-panel p-5 flex flex-col justify-between gap-6">
+            <div class="space-y-5">
+                <div class="flex items-center justify-between pb-3 border-b border-slate-700/50">
+                    <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-blue-400"></i> Advanced Filters
+                    </h2>
+                    <button id="reset-filters" class="text-xs text-slate-400 hover:text-blue-400 transition">Reset</button>
+                </div>
+
+                <!-- Select a genre or view the top six genres. -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-2">Select Genre</label>
+                    <select id="genre-select" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                        <option value="ALL">Top 6 Genres</option>
+                    </select>
+                </div>
+
+                <!-- Choose the measure used by the visualizations. -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-2">Metric</label>
+                    <select id="metric-select" class="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                        <option value="Inflation-Adjusted Gross">Inflation-Adjusted Gross ($)</option>
+                        <option value="Gross">Unadjusted Gross Revenue ($)</option>
+                        <option value="Tickets Sold">Total Tickets Sold</option>
+                        <option value="Movies Released">Number of Movies Released</option>
+                    </select>
+                </div>
+
+                <!-- Limit the dashboard to a year range. -->
+                <div>
+                    <div class="flex justify-between items-center text-xs text-slate-400 mb-2">
+                        <span>Year Range</span>
+                        <span id="year-range-label" class="font-bold text-blue-400">1995 - 2018</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" id="start-year" min="1995" max="2018" value="1995" class="bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                        <input type="number" id="end-year" min="1995" max="2018" value="2018" class="bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <!-- Match rows by their listed top movie title. -->
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-2">Filter by Top Movie Title</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-xs"></i>
+                        <input type="text" id="movie-search" placeholder="Search title e.g. Avatar..." class="w-full pl-8 pr-3 py-2 bg-slate-800/80 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- Summary cards, interactive chart, trend chart, and table. -->
+        <section class="lg:col-span-9 flex flex-col gap-4">
+
+            <!-- Key totals for the currently filtered dataset. -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div class="glass-card p-4 rounded-xl">
+                    <div class="text-xs text-slate-400 mb-1">Total Adjusted Gross</div>
+                    <div id="kpi-total-gross" class="text-lg font-bold text-white">$0.00B</div>
+                    <div id="kpi-gross-sub" class="text-[10px] text-blue-400 mt-1">Inflation-Adjusted</div>
+                </div>
+                <div class="glass-card p-4 rounded-xl">
+                    <div class="text-xs text-slate-400 mb-1">Total Tickets Sold</div>
+                    <div id="kpi-tickets" class="text-lg font-bold text-white">0</div>
+                    <div class="text-[10px] text-emerald-400 mt-1">Across Selected Span</div>
+                </div>
+                <div class="glass-card p-4 rounded-xl">
+                    <div class="text-xs text-slate-400 mb-1">Total Movies Released</div>
+                    <div id="kpi-movies" class="text-lg font-bold text-white">0</div>
+                    <div id="kpi-movies-sub" class="text-[10px] text-slate-400 mt-1">Avg $0M / Movie</div>
+                </div>
+                <div class="glass-card p-4 rounded-xl">
+                    <div class="text-xs text-slate-400 mb-1">Top Grossing Movie</div>
+                    <div id="kpi-top-movie" class="text-sm font-bold text-amber-400 truncate">-</div>
+                    <div id="kpi-top-movie-sub" class="text-[10px] text-slate-400 mt-1">$0M (Unadjusted)</div>
+                </div>
+            </div>
+
+            <!-- Interactive 3D view of genre metrics by year. -->
+            <div class="glass-panel p-4 relative min-h-[380px] flex flex-col">
+                <div class="flex justify-between items-center mb-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-cubes text-blue-400"></i>
+                            3D Film Metrics by Genre and Year
+                        </h3>
+                        <p class="text-[11px] text-slate-400">Each stack represents a genre and year; its height shows the selected metric.</p>
+                    </div>
+                    <div class="text-[11px] text-slate-400 flex items-center gap-3">
+                        <span class="flex items-center gap-1"><i class="fa-solid fa-arrow-pointer text-blue-400"></i> Hover to inspect values &bull; drag to rotate &bull; scroll to zoom</span>
+                    </div>
+                </div>
+
+                <div id="canvas-container" class="w-full flex-1 min-h-[300px] rounded-lg overflow-hidden relative">
+                    <div id="webgl-tooltip">Hover over a 3D stack</div>
+                </div>
+            </div>
+
+            <!-- Historical trend chart and matching dataset rows. -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                <!-- Year-by-year total for the selected metric. -->
+                <div class="glass-panel p-4 flex flex-col">
+                    <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line text-blue-400"></i> Trend Analysis
+                    </h3>
+                    <div class="flex-1 min-h-[220px]">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Filtered dataset records. -->
+                <div class="glass-panel p-4 flex flex-col">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-sm font-semibold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-table text-blue-400"></i> Dataset Details
+                        </h3>
+                        <span id="row-count-badge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">0 rows</span>
+                    </div>
+                    
+                    <div class="overflow-y-auto flex-1 max-h-[220px] rounded border border-slate-800">
+                        <table class="w-full text-left text-xs text-slate-300">
+                            <thead class="bg-slate-800/90 text-slate-400 sticky top-0 text-[11px] uppercase tracking-wider">
+                                <tr>
+                                    <th class="p-2">Genre</th>
+                                    <th class="p-2">Year</th>
+                                    <th class="p-2 text-right">Adj. Gross</th>
+                                    <th class="p-2">Top Movie</th>
+                                </tr>
+                            </thead>
+                            <tbody id="data-table-body" class="divide-y divide-slate-800">
+                                <!-- Rows are inserted when the dashboard refreshes. -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+    </main>
+
+    <footer class="px-4 py-3 text-center text-xs text-slate-500">
+        Data retrieved from Kaggle.com · Dataset: ThrowbackDataThursday Week 11 - Film Genre Stats
+    </footer>
+
+    <!-- Dashboard data, rendering, and interaction logic. -->
+    <script>
+        // Script map:
+        // 1. Dataset and filter state
+        // 2. 3D scene, metric visuals, and interaction
+        // 3. Historical trend chart
+        // 4. Filtering, dashboard updates, and startup
+
+        // 1. Dataset and filter state
+        // Source dataset: ThrowbackDataThursday Week 11 - Film Genre Stats.
+        const rawDataset = [
+            {"Genre":"Adventure","Year":1995,"Movies Released":29,"Gross":771507571,"Tickets Sold":177358047,"Inflation-Adjusted Gross":1590901682,"Top Movie":"Toy Story","Top Movie Gross (That Year)":150148222,"Top Movie Inflation-Adjusted Gross (That Year)":309615962},
+            {"Genre":"Adventure","Year":1996,"Movies Released":34,"Gross":1290490033,"Tickets Sold":291966054,"Inflation-Adjusted Gross":2618935504,"Top Movie":"Independence Day","Top Movie Gross (That Year)":306169255,"Top Movie Inflation-Adjusted Gross (That Year)":621343452},
+            {"Genre":"Adventure","Year":1997,"Movies Released":23,"Gross":881902843,"Tickets Sold":192135684,"Inflation-Adjusted Gross":1723457085,"Top Movie":"Men in Black","Top Movie Gross (That Year)":250650052,"Top Movie Inflation-Adjusted Gross (That Year)":489832425},
+            {"Genre":"Adventure","Year":1998,"Movies Released":29,"Gross":1614467732,"Tickets Sold":344236174,"Inflation-Adjusted Gross":3087798481,"Top Movie":"Armageddon","Top Movie Gross (That Year)":201578182,"Top Movie Inflation-Adjusted Gross (That Year)":385534373},
+            {"Genre":"Adventure","Year":1999,"Movies Released":27,"Gross":1612432107,"Tickets Sold":317407880,"Inflation-Adjusted Gross":2847148684,"Top Movie":"Star Wars Ep. I: The Phantom Menace","Top Movie Gross (That Year)":430443350,"Top Movie Inflation-Adjusted Gross (That Year)":760054462},
+            {"Genre":"Adventure","Year":2000,"Movies Released":30,"Gross":1327311892,"Tickets Sold":246254507,"Inflation-Adjusted Gross":2208902928,"Top Movie":"How the Grinch Stole Christmas","Top Movie Gross (That Year)":253367455,"Top Movie Inflation-Adjusted Gross (That Year)":421652301},
+            {"Genre":"Adventure","Year":2001,"Movies Released":32,"Gross":2268870844,"Tickets Sold":400844935,"Inflation-Adjusted Gross":3595579067,"Top Movie":"Harry Potter and the Sorcerer’s Stone","Top Movie Gross (That Year)":300404434,"Top Movie Inflation-Adjusted Gross (That Year)":476064073},
+            {"Genre":"Adventure","Year":2002,"Movies Released":45,"Gross":2818919526,"Tickets Sold":485184060,"Inflation-Adjusted Gross":4352101018,"Top Movie":"Spider-Man","Top Movie Gross (That Year)":403706375,"Top Movie Inflation-Adjusted Gross (That Year)":623278142},
+            {"Genre":"Adventure","Year":2003,"Movies Released":46,"Gross":2424131447,"Tickets Sold":402011823,"Inflation-Adjusted Gross":3606046052,"Top Movie":"Finding Nemo","Top Movie Gross (That Year)":339714367,"Top Movie Inflation-Adjusted Gross (That Year)":505346215},
+            {"Genre":"Adventure","Year":2004,"Movies Released":47,"Gross":2887833719,"Tickets Sold":465029564,"Inflation-Adjusted Gross":4171315189,"Top Movie":"Shrek 2","Top Movie Gross (That Year)":441226247,"Top Movie Inflation-Adjusted Gross (That Year)":637326773},
+            {"Genre":"Adventure","Year":2005,"Movies Released":43,"Gross":2541162317,"Tickets Sold":396437158,"Inflation-Adjusted Gross":3556041307,"Top Movie":"Star Wars Ep. III: Revenge of the Sith","Top Movie Gross (That Year)":380270577,"Top Movie Inflation-Adjusted Gross (That Year)":532141481},
+            {"Genre":"Adventure","Year":2006,"Movies Released":44,"Gross":2743705092,"Tickets Sold":418886249,"Inflation-Adjusted Gross":3757409654,"Top Movie":"Pirates of the Caribbean: Dead Man’s Chest","Top Movie Gross (That Year)":423315812,"Top Movie Inflation-Adjusted Gross (That Year)":579716429},
+            {"Genre":"Adventure","Year":2007,"Movies Released":41,"Gross":2914786658,"Tickets Sold":411094655,"Inflation-Adjusted Gross":3687519055,"Top Movie":"Spider-Man 3","Top Movie Gross (That Year)":336530303,"Top Movie Inflation-Adjusted Gross (That Year)":425747079},
+            {"Genre":"Adventure","Year":2008,"Movies Released":57,"Gross":3007666130,"Tickets Sold":343645676,"Inflation-Adjusted Gross":3082501714,"Top Movie":"Iron Man","Top Movie Gross (That Year)":318412101,"Top Movie Inflation-Adjusted Gross (That Year)":326334708},
+            {"Genre":"Adventure","Year":2009,"Movies Released":49,"Gross":2818706120,"Tickets Sold":322117706,"Inflation-Adjusted Gross":2889395823,"Top Movie":"Harry Potter and the Half-Blood Prince","Top Movie Gross (That Year)":301959197,"Top Movie Inflation-Adjusted Gross (That Year)":309531964},
+            {"Genre":"Adventure","Year":2010,"Movies Released":44,"Gross":3202949362,"Tickets Sold":372676939,"Inflation-Adjusted Gross":3342912143,"Top Movie":"Toy Story 3","Top Movie Gross (That Year)":415004880,"Top Movie Inflation-Adjusted Gross (That Year)":433139802},
+            {"Genre":"Adventure","Year":2011,"Movies Released":51,"Gross":2775702217,"Tickets Sold":324520322,"Inflation-Adjusted Gross":2910947288,"Top Movie":"Harry Potter and the Deathly Hallows: Part II","Top Movie Gross (That Year)":381011219,"Top Movie Inflation-Adjusted Gross (That Year)":399575851},
+            {"Genre":"Adventure","Year":2012,"Movies Released":48,"Gross":3284291528,"Tickets Sold":412599414,"Inflation-Adjusted Gross":3701016744,"Top Movie":"The Hobbit: An Unexpected Journey","Top Movie Gross (That Year)":263834893,"Top Movie Inflation-Adjusted Gross (That Year)":297311414},
+            {"Genre":"Adventure","Year":2013,"Movies Released":40,"Gross":2900376040,"Tickets Sold":356747331,"Inflation-Adjusted Gross":3200023559,"Top Movie":"The Hunger Games: Catching Fire","Top Movie Gross (That Year)":407139699,"Top Movie Inflation-Adjusted Gross (That Year)":449202659},
+            {"Genre":"Adventure","Year":2014,"Movies Released":49,"Gross":2734961640,"Tickets Sold":334755123,"Inflation-Adjusted Gross":3002753453,"Top Movie":"The Lego Movie","Top Movie Gross (That Year)":257784718,"Top Movie Inflation-Adjusted Gross (That Year)":283025524},
+            {"Genre":"Adventure","Year":2015,"Movies Released":51,"Gross":3063807262,"Tickets Sold":355658524,"Inflation-Adjusted Gross":3190256960,"Top Movie":"Star Wars Ep. VII: The Force Awakens","Top Movie Gross (That Year)":742208942,"Top Movie Inflation-Adjusted Gross (That Year)":772841449},
+            {"Genre":"Adventure","Year":2016,"Movies Released":53,"Gross":4159137913,"Tickets Sold":478096752,"Inflation-Adjusted Gross":4288527865,"Top Movie":"Finding Dory","Top Movie Gross (That Year)":486295561,"Top Movie Inflation-Adjusted Gross (That Year)":501424119},
+            {"Genre":"Adventure","Year":2017,"Movies Released":44,"Gross":2687890267,"Tickets Sold":299653307,"Inflation-Adjusted Gross":2687890164,"Top Movie":"Star Wars Ep. VIII: The Last Jedi","Top Movie Gross (That Year)":517218368,"Top Movie Inflation-Adjusted Gross (That Year)":517218348},
+            {"Genre":"Adventure","Year":2018,"Movies Released":49,"Gross":2973509668,"Tickets Sold":331494935,"Inflation-Adjusted Gross":2973509567,"Top Movie":"Incredibles 2","Top Movie Gross (That Year)":608581744,"Top Movie Inflation-Adjusted Gross (That Year)":608581723},
+            {"Genre":"Action","Year":1995,"Movies Released":29,"Gross":1049544278,"Tickets Sold":241274531,"Inflation-Adjusted Gross":2164232543,"Top Movie":"Batman Forever","Top Movie Gross (That Year)":184031112,"Top Movie Inflation-Adjusted Gross (That Year)":379484820},
+            {"Genre":"Action","Year":1996,"Movies Released":36,"Gross":1222675745,"Tickets Sold":276623456,"Inflation-Adjusted Gross":2481312400,"Top Movie":"Twister","Top Movie Gross (That Year)":241688385,"Top Movie Inflation-Adjusted Gross (That Year)":490485224},
+            {"Genre":"Action","Year":1997,"Movies Released":36,"Gross":1456612580,"Tickets Sold":317344773,"Inflation-Adjusted Gross":2846582614,"Top Movie":"The Lost World: Jurassic Park","Top Movie Gross (That Year)":229086679,"Top Movie Inflation-Adjusted Gross (That Year)":447692246},
+            {"Genre":"Action","Year":1998,"Movies Released":30,"Gross":973161753,"Tickets Sold":207497162,"Inflation-Adjusted Gross":1861249543,"Top Movie":"Rush Hour","Top Movie Gross (That Year)":137567454,"Top Movie Inflation-Adjusted Gross (That Year)":263108738},
+            {"Genre":"Action","Year":1999,"Movies Released":25,"Gross":910203960,"Tickets Sold":179173997,"Inflation-Adjusted Gross":1607190753,"Top Movie":"The Matrix","Top Movie Gross (That Year)":171479930,"Top Movie Inflation-Adjusted Gross (That Year)":302790330},
+            {"Genre":"Action","Year":2000,"Movies Released":31,"Gross":1266568598,"Tickets Sold":234982623,"Inflation-Adjusted Gross":2107794128,"Top Movie":"Mission: Impossible 2","Top Movie Gross (That Year)":215409889,"Top Movie Inflation-Adjusted Gross (That Year)":358480149},
+            {"Genre":"Action","Year":2001,"Movies Released":31,"Gross":1390622699,"Tickets Sold":245693043,"Inflation-Adjusted Gross":2203866596,"Top Movie":"Rush Hour 2","Top Movie Gross (That Year)":226164286,"Top Movie Inflation-Adjusted Gross (That Year)":358426420},
+            {"Genre":"Action","Year":2002,"Movies Released":32,"Gross":1394290142,"Tickets Sold":239981075,"Inflation-Adjusted Gross":2152630243,"Top Movie":"Men in Black 2","Top Movie Gross (That Year)":190418803,"Top Movie Inflation-Adjusted Gross (That Year)":293985636},
+            {"Genre":"Action","Year":2003,"Movies Released":36,"Gross":2109404900,"Tickets Sold":349818376,"Inflation-Adjusted Gross":3137870833,"Top Movie":"The Matrix Reloaded","Top Movie Gross (That Year)":281553689,"Top Movie Inflation-Adjusted Gross (That Year)":418828604},
+            {"Genre":"Action","Year":2004,"Movies Released":28,"Gross":1068864943,"Tickets Sold":172119948,"Inflation-Adjusted Gross":1543915934,"Top Movie":"I, Robot","Top Movie Gross (That Year)":144801023,"Top Movie Inflation-Adjusted Gross (That Year)":209157020},
+            {"Genre":"Action","Year":2005,"Movies Released":41,"Gross":1356922056,"Tickets Sold":211688288,"Inflation-Adjusted Gross":1898843943,"Top Movie":"War of the Worlds","Top Movie Gross (That Year)":234280354,"Top Movie Inflation-Adjusted Gross (That Year)":327846267},
+            {"Genre":"Action","Year":2006,"Movies Released":33,"Gross":1050592286,"Tickets Sold":160395751,"Inflation-Adjusted Gross":1438749886,"Top Movie":"X-Men: The Last Stand","Top Movie Gross (That Year)":234362462,"Top Movie Inflation-Adjusted Gross (That Year)":320951305},
+            {"Genre":"Action","Year":2007,"Movies Released":38,"Gross":1489960013,"Tickets Sold":214202319,"Inflation-Adjusted Gross":1921394801,"Top Movie":"Transformers","Top Movie Gross (That Year)":319246193,"Top Movie Inflation-Adjusted Gross (That Year)":411687542},
+            {"Genre":"Action","Year":2008,"Movies Released":36,"Gross":1643555898,"Tickets Sold":195362748,"Inflation-Adjusted Gross":1752403850,"Top Movie":"The Dark Knight","Top Movie Gross (That Year)":531001578,"Top Movie Inflation-Adjusted Gross (That Year)":566168276},
+            {"Genre":"Action","Year":2009,"Movies Released":31,"Gross":2041030428,"Tickets Sold":237119885,"Inflation-Adjusted Gross":2126965368,"Top Movie":"Transformers: Revenge of the Fallen","Top Movie Gross (That Year)":402111870,"Top Movie Inflation-Adjusted Gross (That Year)":419042269},
+            {"Genre":"Action","Year":2010,"Movies Released":31,"Gross":1804202879,"Tickets Sold":205215607,"Inflation-Adjusted Gross":1840783995,"Top Movie":"Avatar","Top Movie Gross (That Year)":408392727,"Top Movie Inflation-Adjusted Gross (That Year)":416673094},
+            {"Genre":"Action","Year":2011,"Movies Released":47,"Gross":2117521464,"Tickets Sold":243632546,"Inflation-Adjusted Gross":2185383938,"Top Movie":"Transformers: Dark of the Moon","Top Movie Gross (That Year)":352390543,"Top Movie Inflation-Adjusted Gross (That Year)":363683979},
+            {"Genre":"Action","Year":2012,"Movies Released":48,"Gross":2219838801,"Tickets Sold":278874194,"Inflation-Adjusted Gross":2501501520,"Top Movie":"The Avengers","Top Movie Gross (That Year)":623279547,"Top Movie Inflation-Adjusted Gross (That Year)":702363944},
+            {"Genre":"Action","Year":2013,"Movies Released":45,"Gross":2423174736,"Tickets Sold":298053449,"Inflation-Adjusted Gross":2673539438,"Top Movie":"Iron Man 3","Top Movie Gross (That Year)":408992272,"Top Movie Inflation-Adjusted Gross (That Year)":451249740},
+            {"Genre":"Action","Year":2014,"Movies Released":49,"Gross":2603979395,"Tickets Sold":318724501,"Inflation-Adjusted Gross":2858958774,"Top Movie":"Guardians of the Galaxy","Top Movie Gross (That Year)":333055258,"Top Movie Inflation-Adjusted Gross (That Year)":365667737},
+            {"Genre":"Action","Year":2015,"Movies Released":56,"Gross":2947442069,"Tickets Sold":338704883,"Inflation-Adjusted Gross":3038182801,"Top Movie":"Jurassic World","Top Movie Gross (That Year)":652270625,"Top Movie Inflation-Adjusted Gross (That Year)":672351601},
+            {"Genre":"Action","Year":2016,"Movies Released":61,"Gross":2533249471,"Tickets Sold":289951566,"Inflation-Adjusted Gross":2600865547,"Top Movie":"Captain America: Civil War","Top Movie Gross (That Year)":408084349,"Top Movie Inflation-Adjusted Gross (That Year)":418976708},
+            {"Genre":"Action","Year":2017,"Movies Released":67,"Gross":3305708764,"Tickets Sold":368529372,"Inflation-Adjusted Gross":3305708467,"Top Movie":"Wonder Woman","Top Movie Gross (That Year)":412563408,"Top Movie Inflation-Adjusted Gross (That Year)":412563371},
+            {"Genre":"Action","Year":2018,"Movies Released":59,"Gross":4142067464,"Tickets Sold":461768924,"Inflation-Adjusted Gross":4142067248,"Top Movie":"Black Panther","Top Movie Gross (That Year)":700059566,"Top Movie Inflation-Adjusted Gross (That Year)":700059529},
+            {"Genre":"Drama","Year":1995,"Movies Released":131,"Gross":1525963099,"Tickets Sold":350796050,"Inflation-Adjusted Gross":3146640569,"Top Movie":"Apollo 13","Top Movie Gross (That Year)":172036360,"Top Movie Inflation-Adjusted Gross (That Year)":354750774},
+            {"Genre":"Drama","Year":1996,"Movies Released":121,"Gross":1373074715,"Tickets Sold":310650329,"Inflation-Adjusted Gross":2786533451,"Top Movie":"A Time to Kill","Top Movie Gross (That Year)":108766007,"Top Movie Inflation-Adjusted Gross (That Year)":220730972},
+            {"Genre":"Drama","Year":1997,"Movies Released":117,"Gross":1198241550,"Tickets Sold":261054747,"Inflation-Adjusted Gross":2341661081,"Top Movie":"The Godfather","Top Movie Gross (That Year)":129141981,"Top Movie Inflation-Adjusted Gross (That Year)":252375450},
+            {"Genre":"Drama","Year":1998,"Movies Released":129,"Gross":1577021454,"Tickets Sold":335565112,"Inflation-Adjusted Gross":3010019055,"Top Movie":"Saving Private Ryan","Top Movie Gross (That Year)":190588778,"Top Movie Inflation-Adjusted Gross (That Year)":363771750},
+            {"Genre":"Drama","Year":1999,"Movies Released":133,"Gross":1458861532,"Tickets Sold":287177397,"Inflation-Adjusted Gross":2575981251,"Top Movie":"The General's Daughter","Top Movie Gross (That Year)":102705852,"Top Movie Inflation-Adjusted Gross (That Year)":181352612},
+            {"Genre":"Drama","Year":2000,"Movies Released":166,"Gross":1749265350,"Tickets Sold":324538950,"Inflation-Adjusted Gross":2911114382,"Top Movie":"The Perfect Storm","Top Movie Gross (That Year)":182618434,"Top Movie Inflation-Adjusted Gross (That Year)":303912239},
+            {"Genre":"Drama","Year":2001,"Movies Released":151,"Gross":1377189931,"Tickets Sold":243319703,"Inflation-Adjusted Gross":2182577736,"Top Movie":"Cast Away","Top Movie Gross (That Year)":123942702,"Top Movie Inflation-Adjusted Gross (That Year)":196425036},
+            {"Genre":"Drama","Year":2002,"Movies Released":175,"Gross":1601890899,"Tickets Sold":275712631,"Inflation-Adjusted Gross":2473142300,"Top Movie":"A Beautiful Mind","Top Movie Gross (That Year)":132929755,"Top Movie Inflation-Adjusted Gross (That Year)":205228833},
+            {"Genre":"Drama","Year":2003,"Movies Released":174,"Gross":1109221772,"Tickets Sold":183950452,"Inflation-Adjusted Gross":1650035554,"Top Movie":"Seabiscuit","Top Movie Gross (That Year)":120277854,"Top Movie Inflation-Adjusted Gross (That Year)":178920700},
+            {"Genre":"Drama","Year":2004,"Movies Released":228,"Gross":1380080888,"Tickets Sold":222235135,"Inflation-Adjusted Gross":1993449161,"Top Movie":"The Passion of the Christ","Top Movie Gross (That Year)":370274604,"Top Movie Inflation-Adjusted Gross (That Year)":534840824},
+            {"Genre":"Drama","Year":2005,"Movies Released":266,"Gross":1421398792,"Tickets Sold":221746950,"Inflation-Adjusted Gross":1989070142,"Top Movie":"Million Dollar Baby","Top Movie Gross (That Year)":99378637,"Top Movie Inflation-Adjusted Gross (That Year)":139067995},
+            {"Genre":"Drama","Year":2006,"Movies Released":252,"Gross":1566403106,"Tickets Sold":239145382,"Inflation-Adjusted Gross":2145134077,"Top Movie":"The Departed","Top Movie Gross (That Year)":120359613,"Top Movie Inflation-Adjusted Gross (That Year)":164828266},
+            {"Genre":"Drama","Year":2007,"Movies Released":249,"Gross":1293722940,"Tickets Sold":178970159,"Inflation-Adjusted Gross":1605362326,"Top Movie":"American Gangster","Top Movie Gross (That Year)":129150735,"Top Movie Inflation-Adjusted Gross (That Year)":160261303},
+            {"Genre":"Drama","Year":2008,"Movies Released":256,"Gross":1089416918,"Tickets Sold":137297291,"Inflation-Adjusted Gross":1231556700,"Top Movie":"Twilight","Top Movie Gross (That Year)":176922850,"Top Movie Inflation-Adjusted Gross (That Year)":200006552},
+            {"Genre":"Drama","Year":2009,"Movies Released":196,"Gross":1834368065,"Tickets Sold":219737067,"Inflation-Adjusted Gross":1971041491,"Top Movie":"The Twilight Saga: New Moon","Top Movie Gross (That Year)":287954655,"Top Movie Inflation-Adjusted Gross (That Year)":309409318},
+            {"Genre":"Drama","Year":2010,"Movies Released":208,"Gross":1688220533,"Tickets Sold":195679977,"Inflation-Adjusted Gross":1755249394,"Top Movie":"The Twilight Saga: Eclipse","Top Movie Gross (That Year)":300531751,"Top Movie Inflation-Adjusted Gross (That Year)":312464020},
+            {"Genre":"Drama","Year":2011,"Movies Released":244,"Gross":1490251352,"Tickets Sold":183601071,"Inflation-Adjusted Gross":1646901607,"Top Movie":"The Twilight Saga: Breaking Dawn, Part 1","Top Movie Gross (That Year)":275530738,"Top Movie Inflation-Adjusted Gross (That Year)":304493611},
+            {"Genre":"Drama","Year":2012,"Movies Released":228,"Gross":1670673352,"Tickets Sold":209883469,"Inflation-Adjusted Gross":1882654717,"Top Movie":"The Twilight Saga: Breaking Dawn, Part 2","Top Movie Gross (That Year)":289133356,"Top Movie Inflation-Adjusted Gross (That Year)":325819692},
+            {"Genre":"Drama","Year":2013,"Movies Released":231,"Gross":1338302458,"Tickets Sold":164612723,"Inflation-Adjusted Gross":1476576125,"Top Movie":"The Great Gatsby","Top Movie Gross (That Year)":144840419,"Top Movie Inflation-Adjusted Gross (That Year)":159805359},
+            {"Genre":"Drama","Year":2014,"Movies Released":254,"Gross":1648533596,"Tickets Sold":201778765,"Inflation-Adjusted Gross":1809955522,"Top Movie":"The Fault in Our Stars","Top Movie Gross (That Year)":124872350,"Top Movie Inflation-Adjusted Gross (That Year)":137099662},
+            {"Genre":"Drama","Year":2015,"Movies Released":287,"Gross":2070185234,"Tickets Sold":240584394,"Inflation-Adjusted Gross":2158042014,"Top Movie":"American Sniper","Top Movie Gross (That Year)":347897084,"Top Movie Inflation-Adjusted Gross (That Year)":362661520},
+            {"Genre":"Drama","Year":2016,"Movies Released":282,"Gross":1360947564,"Tickets Sold":156363340,"Inflation-Adjusted Gross":1402579160,"Top Movie":"Sully","Top Movie Gross (That Year)":124976335,"Top Movie Inflation-Adjusted Gross (That Year)":128799380},
+            {"Genre":"Drama","Year":2017,"Movies Released":253,"Gross":1326577328,"Tickets Sold":147890338,"Inflation-Adjusted Gross":1326576332,"Top Movie":"Hidden Figures","Top Movie Gross (That Year)":167620331,"Top Movie Inflation-Adjusted Gross (That Year)":167620205},
+            {"Genre":"Drama","Year":2018,"Movies Released":266,"Gross":1631625937,"Tickets Sold":181897975,"Inflation-Adjusted Gross":1631624836,"Top Movie":"A Star is Born","Top Movie Gross (That Year)":202110097,"Top Movie Inflation-Adjusted Gross (That Year)":202109961},
+            {"Genre":"Comedy","Year":1995,"Movies Released":61,"Gross":1048895722,"Tickets Sold":241125423,"Inflation-Adjusted Gross":2162895044,"Top Movie":"Ace Ventura: When Nature Calls","Top Movie Gross (That Year)":104371496,"Top Movie Inflation-Adjusted Gross (That Year)":215221196},
+            {"Genre":"Comedy","Year":1996,"Movies Released":69,"Gross":1041177912,"Tickets Sold":235560580,"Inflation-Adjusted Gross":2112978403,"Top Movie":"The Nutty Professor","Top Movie Gross (That Year)":128814019,"Top Movie Inflation-Adjusted Gross (That Year)":261416648},
+            {"Genre":"Comedy","Year":1997,"Movies Released":72,"Gross":1296925200,"Tickets Sold":282554475,"Inflation-Adjusted Gross":2534513641,"Top Movie":"Liar Liar","Top Movie Gross (That Year)":181410615,"Top Movie Inflation-Adjusted Gross (That Year)":354521354},
+            {"Genre":"Comedy","Year":1998,"Movies Released":74,"Gross":791406180,"Tickets Sold":168743282,"Inflation-Adjusted Gross":1513627240,"Top Movie":"The Waterboy","Top Movie Gross (That Year)":150042308,"Top Movie Inflation-Adjusted Gross (That Year)":286967843},
+            {"Genre":"Comedy","Year":1999,"Movies Released":69,"Gross":1352538228,"Tickets Sold":266247647,"Inflation-Adjusted Gross":2388241394,"Top Movie":"Austin Powers: The Spy Who Shagged Me","Top Movie Gross (That Year)":206040085,"Top Movie Inflation-Adjusted Gross (That Year)":363814826},
+            {"Genre":"Comedy","Year":2000,"Movies Released":79,"Gross":1482623604,"Tickets Sold":275069272,"Inflation-Adjusted Gross":2467371370,"Top Movie":"Meet the Parents","Top Movie Gross (That Year)":161325490,"Top Movie Inflation-Adjusted Gross (That Year)":268476702},
+            {"Genre":"Comedy","Year":2001,"Movies Released":88,"Gross":1477683205,"Tickets Sold":261074728,"Inflation-Adjusted Gross":2341840310,"Top Movie":"American Pie 2","Top Movie Gross (That Year)":145096820,"Top Movie Inflation-Adjusted Gross (That Year)":229950223},
+            {"Genre":"Comedy","Year":2002,"Movies Released":82,"Gross":1305574866,"Tickets Sold":224711640,"Inflation-Adjusted Gross":2015663411,"Top Movie":"Austin Powers in Goldmember","Top Movie Gross (That Year)":213117789,"Top Movie Inflation-Adjusted Gross (That Year)":329030330},
+            {"Genre":"Comedy","Year":2003,"Movies Released":82,"Gross":1802604618,"Tickets Sold":298939369,"Inflation-Adjusted Gross":2681486140,"Top Movie":"Bruce Almighty","Top Movie Gross (That Year)":242704995,"Top Movie Inflation-Adjusted Gross (That Year)":361038729},
+            {"Genre":"Comedy","Year":2004,"Movies Released":120,"Gross":1674423943,"Tickets Sold":269633428,"Inflation-Adjusted Gross":2418611849,"Top Movie":"Meet the Fockers","Top Movie Gross (That Year)":162461370,"Top Movie Inflation-Adjusted Gross (That Year)":234666374},
+            {"Genre":"Comedy","Year":2005,"Movies Released":129,"Gross":1825866367,"Tickets Sold":284846481,"Inflation-Adjusted Gross":2555072935,"Top Movie":"Wedding Crashers","Top Movie Gross (That Year)":209218368,"Top Movie Inflation-Adjusted Gross (That Year)":292775090},
+            {"Genre":"Comedy","Year":2006,"Movies Released":125,"Gross":1954939739,"Tickets Sold":298464018,"Inflation-Adjusted Gross":2677222241,"Top Movie":"Talladega Nights: The Ballad of Ricky Bobby","Top Movie Gross (That Year)":148213377,"Top Movie Inflation-Adjusted Gross (That Year)":202973085},
+            {"Genre":"Comedy","Year":2007,"Movies Released":134,"Gross":1428122669,"Tickets Sold":203009299,"Inflation-Adjusted Gross":1820993412,"Top Movie":"Wild Hogs","Top Movie Gross (That Year)":168213584,"Top Movie Inflation-Adjusted Gross (That Year)":214488457},
+            {"Genre":"Comedy","Year":2008,"Movies Released":125,"Gross":2099450726,"Tickets Sold":249134624,"Inflation-Adjusted Gross":2234737577,"Top Movie":"Sex and the City","Top Movie Gross (That Year)":152647258,"Top Movie Inflation-Adjusted Gross (That Year)":162483720},
+            {"Genre":"Comedy","Year":2009,"Movies Released":87,"Gross":1435281074,"Tickets Sold":173140695,"Inflation-Adjusted Gross":1553072034,"Top Movie":"The Hangover","Top Movie Gross (That Year)":277322503,"Top Movie Inflation-Adjusted Gross (That Year)":300081867},
+            {"Genre":"Comedy","Year":2010,"Movies Released":77,"Gross":1376066203,"Tickets Sold":155529369,"Inflation-Adjusted Gross":1395098440,"Top Movie":"Grown Ups","Top Movie Gross (That Year)":162001186,"Top Movie Inflation-Adjusted Gross (That Year)":164241809},
+            {"Genre":"Comedy","Year":2011,"Movies Released":96,"Gross":1491182522,"Tickets Sold":171940533,"Inflation-Adjusted Gross":1542306581,"Top Movie":"The Hangover Part II","Top Movie Gross (That Year)":254464305,"Top Movie Inflation-Adjusted Gross (That Year)":263188420},
+            {"Genre":"Comedy","Year":2012,"Movies Released":94,"Gross":1050654625,"Tickets Sold":131991738,"Inflation-Adjusted Gross":1183965890,"Top Movie":"21 Jump Street","Top Movie Gross (That Year)":138447667,"Top Movie Inflation-Adjusted Gross (That Year)":156014461},
+            {"Genre":"Comedy","Year":2013,"Movies Released":98,"Gross":1619719448,"Tickets Sold":199227435,"Inflation-Adjusted Gross":1787070092,"Top Movie":"The Heat","Top Movie Gross (That Year)":159581587,"Top Movie Inflation-Adjusted Gross (That Year)":176069678},
+            {"Genre":"Comedy","Year":2014,"Movies Released":102,"Gross":1270249093,"Tickets Sold":155477200,"Inflation-Adjusted Gross":1394630484,"Top Movie":"22 Jump Street","Top Movie Gross (That Year)":191719337,"Top Movie Inflation-Adjusted Gross (That Year)":210492283},
+            {"Genre":"Comedy","Year":2015,"Movies Released":121,"Gross":1293229974,"Tickets Sold":148452655,"Inflation-Adjusted Gross":1331620315,"Top Movie":"Pitch Perfect 2","Top Movie Gross (That Year)":184296230,"Top Movie Inflation-Adjusted Gross (That Year)":189767179},
+            {"Genre":"Comedy","Year":2016,"Movies Released":98,"Gross":1409767232,"Tickets Sold":161840867,"Inflation-Adjusted Gross":1451712577,"Top Movie":"Ghostbusters","Top Movie Gross (That Year)":128350574,"Top Movie Inflation-Adjusted Gross (That Year)":132169438},
+            {"Genre":"Comedy","Year":2017,"Movies Released":74,"Gross":784372296,"Tickets Sold":87443925,"Inflation-Adjusted Gross":784372007,"Top Movie":"Girls Trip","Top Movie Gross (That Year)":115108515,"Top Movie Inflation-Adjusted Gross (That Year)":115108473},
+            {"Genre":"Comedy","Year":2018,"Movies Released":74,"Gross":865423455,"Tickets Sold":96479734,"Inflation-Adjusted Gross":865423214,"Top Movie":"Night School","Top Movie Gross (That Year)":77339130,"Top Movie Inflation-Adjusted Gross (That Year)":77339108},
+            {"Genre":"Thriller or Suspense","Year":1995,"Movies Released":19,"Gross":329923961,"Tickets Sold":75844582,"Inflation-Adjusted Gross":680325901,"Top Movie":"Se7en","Top Movie Gross (That Year)":87113775,"Top Movie Inflation-Adjusted Gross (That Year)":179634596},
+            {"Genre":"Thriller or Suspense","Year":1996,"Movies Released":22,"Gross":305709447,"Tickets Sold":69165022,"Inflation-Adjusted Gross":620410247,"Top Movie":"Executive Decision","Top Movie Gross (That Year)":56679192,"Top Movie Inflation-Adjusted Gross (That Year)":115025400},
+            {"Genre":"Thriller or Suspense","Year":1997,"Movies Released":23,"Gross":646036777,"Tickets Sold":140748740,"Inflation-Adjusted Gross":1262516198,"Top Movie":"Titanic","Top Movie Gross (That Year)":157467971,"Top Movie Inflation-Adjusted Gross (That Year)":307731496},
+            {"Genre":"Thriller or Suspense","Year":1998,"Movies Released":22,"Gross":786162209,"Tickets Sold":167625193,"Inflation-Adjusted Gross":1503597981,"Top Movie":"Titanic","Top Movie Gross (That Year)":443319081,"Top Movie Inflation-Adjusted Gross (That Year)":847883131},
+            {"Genre":"Thriller or Suspense","Year":1999,"Movies Released":17,"Gross":574879882,"Tickets Sold":113165323,"Inflation-Adjusted Gross":1015092947,"Top Movie":"The Sixth Sense","Top Movie Gross (That Year)":276386495,"Top Movie Inflation-Adjusted Gross (That Year)":488028874},
+            {"Genre":"Thriller or Suspense","Year":2000,"Movies Released":27,"Gross":572344556,"Tickets Sold":106186358,"Inflation-Adjusted Gross":952491631,"Top Movie":"What Lies Beneath","Top Movie Gross (That Year)":155464351,"Top Movie Inflation-Adjusted Gross (That Year)":258722638},
+            {"Genre":"Thriller or Suspense","Year":2001,"Movies Released":26,"Gross":674556330,"Tickets Sold":119179554,"Inflation-Adjusted Gross":1069040599,"Top Movie":"Ocean's Eleven","Top Movie Gross (That Year)":151967372,"Top Movie Inflation-Adjusted Gross (That Year)":240838731},
+            {"Genre":"Thriller or Suspense","Year":2002,"Movies Released":33,"Gross":950052308,"Tickets Sold":163520173,"Inflation-Adjusted Gross":1466775952,"Top Movie":"Signs","Top Movie Gross (That Year)":227750028,"Top Movie Inflation-Adjusted Gross (That Year)":351620917},
+            {"Genre":"Thriller or Suspense","Year":2003,"Movies Released":20,"Gross":382640658,"Tickets Sold":63456152,"Inflation-Adjusted Gross":569201683,"Top Movie":"The Recruit","Top Movie Gross (That Year)":52784696,"Top Movie Inflation-Adjusted Gross (That Year)":78520505},
+            {"Genre":"Thriller or Suspense","Year":2004,"Movies Released":30,"Gross":801681437,"Tickets Sold":129095226,"Inflation-Adjusted Gross":1157984177,"Top Movie":"The Bourne Supremacy","Top Movie Gross (That Year)":176087450,"Top Movie Inflation-Adjusted Gross (That Year)":254348512},
+            {"Genre":"Thriller or Suspense","Year":2005,"Movies Released":25,"Gross":368731981,"Tickets Sold":57524478,"Inflation-Adjusted Gross":515994568,"Top Movie":"Flightplan","Top Movie Gross (That Year)":89132263,"Top Movie Inflation-Adjusted Gross (That Year)":124729521},
+            {"Genre":"Thriller or Suspense","Year":2006,"Movies Released":35,"Gross":739589574,"Tickets Sold":112914419,"Inflation-Adjusted Gross":1012842338,"Top Movie":"The Da Vinci Code","Top Movie Gross (That Year)":217536138,"Top Movie Inflation-Adjusted Gross (That Year)":297908216},
+            {"Genre":"Thriller or Suspense","Year":2007,"Movies Released":57,"Gross":826453022,"Tickets Sold":120084032,"Inflation-Adjusted Gross":1077153767,"Top Movie":"The Bourne Ultimatum","Top Movie Gross (That Year)":227471070,"Top Movie Inflation-Adjusted Gross (That Year)":296473379},
+            {"Genre":"Thriller or Suspense","Year":2008,"Movies Released":51,"Gross":780239375,"Tickets Sold":97076819,"Inflation-Adjusted Gross":870779066,"Top Movie":"Eagle Eye","Top Movie Gross (That Year)":101401695,"Top Movie Inflation-Adjusted Gross (That Year)":113168440},
+            {"Genre":"Thriller or Suspense","Year":2009,"Movies Released":55,"Gross":965638077,"Tickets Sold":122809305,"Inflation-Adjusted Gross":1101599466,"Top Movie":"Taken","Top Movie Gross (That Year)":145000989,"Top Movie Inflation-Adjusted Gross (That Year)":165417060},
+            {"Genre":"Thriller or Suspense","Year":2010,"Movies Released":51,"Gross":919200109,"Tickets Sold":104436566,"Inflation-Adjusted Gross":936795997,"Top Movie":"Inception","Top Movie Gross (That Year)":292568851,"Top Movie Inflation-Adjusted Gross (That Year)":298169382},
+            {"Genre":"Thriller or Suspense","Year":2011,"Movies Released":60,"Gross":928786329,"Tickets Sold":110302117,"Inflation-Adjusted Gross":989409989,"Top Movie":"Super 8","Top Movie Gross (That Year)":127004179,"Top Movie Inflation-Adjusted Gross (That Year)":135293985},
+            {"Genre":"Thriller or Suspense","Year":2012,"Movies Released":64,"Gross":1534307056,"Tickets Sold":192752112,"Inflation-Adjusted Gross":1728986445,"Top Movie":"The Hunger Games","Top Movie Gross (That Year)":408010692,"Top Movie Inflation-Adjusted Gross (That Year)":459780820},
+            {"Genre":"Thriller or Suspense","Year":2013,"Movies Released":70,"Gross":1143419822,"Tickets Sold":140642010,"Inflation-Adjusted Gross":1261558830,"Top Movie":"Gravity","Top Movie Gross (That Year)":255621667,"Top Movie Inflation-Adjusted Gross (That Year)":282032693},
+            {"Genre":"Thriller or Suspense","Year":2014,"Movies Released":62,"Gross":969244659,"Tickets Sold":118634566,"Inflation-Adjusted Gross":1064152057,"Top Movie":"The Hunger Games: Mockingjay - Part 1","Top Movie Gross (That Year)":323734502,"Top Movie Inflation-Adjusted Gross (That Year)":355434237},
+            {"Genre":"Thriller or Suspense","Year":2015,"Movies Released":72,"Gross":1089501477,"Tickets Sold":125482735,"Inflation-Adjusted Gross":1125580133,"Top Movie":"The Hunger Games: Mockingjay - Part 2","Top Movie Gross (That Year)":274185395,"Top Movie Inflation-Adjusted Gross (That Year)":283264998},
+            {"Genre":"Thriller or Suspense","Year":2016,"Movies Released":64,"Gross":652302676,"Tickets Sold":74687059,"Inflation-Adjusted Gross":669942919,"Top Movie":"The Accountant","Top Movie Gross (That Year)":85856696,"Top Movie Inflation-Adjusted Gross (That Year)":88178521},
+            {"Genre":"Thriller or Suspense","Year":2017,"Movies Released":63,"Gross":697561514,"Tickets Sold":77766030,"Inflation-Adjusted Gross":697561289,"Top Movie":"Baby Driver","Top Movie Gross (That Year)":107825862,"Top Movie Inflation-Adjusted Gross (That Year)":107825827},
+            {"Genre":"Thriller or Suspense","Year":2018,"Movies Released":56,"Gross":613231037,"Tickets Sold":68364643,"Inflation-Adjusted Gross":613230848,"Top Movie":"Maze Runner: The Death Cure","Top Movie Gross (That Year)":58032443,"Top Movie Inflation-Adjusted Gross (That Year)":58032425},
+            {"Genre":"Horror","Year":1995,"Movies Released":15,"Gross":148103633,"Tickets Sold":34046807,"Inflation-Adjusted Gross":305399859,"Top Movie":"Tales from the Crypt: Demon Knight","Top Movie Gross (That Year)":21089146,"Top Movie Inflation-Adjusted Gross (That Year)":43487267},
+            {"Genre":"Horror","Year":1996,"Movies Released":9,"Gross":112915551,"Tickets Sold":25546499,"Inflation-Adjusted Gross":229152096,"Top Movie":"Scream","Top Movie Gross (That Year)":39129829,"Top Movie Inflation-Adjusted Gross (That Year)":79410517},
+            {"Genre":"Horror","Year":1997,"Movies Released":11,"Gross":407801247,"Tickets Sold":88845581,"Inflation-Adjusted Gross":796944862,"Top Movie":"Scream 2","Top Movie Gross (That Year)":85520969,"Top Movie Inflation-Adjusted Gross (That Year)":167129202},
+            {"Genre":"Horror","Year":1998,"Movies Released":16,"Gross":318584830,"Tickets Sold":67928527,"Inflation-Adjusted Gross":609318887,"Top Movie":"Halloween: H2O","Top Movie Gross (That Year)":55041738,"Top Movie Inflation-Adjusted Gross (That Year)":105271712},
+            {"Genre":"Horror","Year":1999,"Movies Released":15,"Gross":477204556,"Tickets Sold":93937896,"Inflation-Adjusted Gross":842622927,"Top Movie":"The Blair Witch Project","Top Movie Gross (That Year)":140539099,"Top Movie Inflation-Adjusted Gross (That Year)":248156614},
+            {"Genre":"Horror","Year":2000,"Movies Released":14,"Gross":370091662,"Tickets Sold":68662640,"Inflation-Adjusted Gross":615903881,"Top Movie":"Scream 3","Top Movie Gross (That Year)":89138076,"Top Movie Inflation-Adjusted Gross (That Year)":148342945},
+            {"Genre":"Horror","Year":2001,"Movies Released":16,"Gross":391330452,"Tickets Sold":69139648,"Inflation-Adjusted Gross":620182643,"Top Movie":"Hannibal","Top Movie Gross (That Year)":165092266,"Top Movie Inflation-Adjusted Gross (That Year)":261639127},
+            {"Genre":"Horror","Year":2002,"Movies Released":11,"Gross":297788051,"Tickets Sold":51254391,"Inflation-Adjusted Gross":459751887,"Top Movie":"The Ring","Top Movie Gross (That Year)":127230430,"Top Movie Inflation-Adjusted Gross (That Year)":196429743},
+            {"Genre":"Horror","Year":2003,"Movies Released":16,"Gross":450032336,"Tickets Sold":74632219,"Inflation-Adjusted Gross":669451004,"Top Movie":"Freddy vs. Jason","Top Movie Gross (That Year)":82622655,"Top Movie Inflation-Adjusted Gross (That Year)":122906322},
+            {"Genre":"Horror","Year":2004,"Movies Released":20,"Gross":464969445,"Tickets Sold":74874297,"Inflation-Adjusted Gross":671622444,"Top Movie":"The Grudge","Top Movie Gross (That Year)":110359362,"Top Movie Inflation-Adjusted Gross (That Year)":159407947},
+            {"Genre":"Horror","Year":2005,"Movies Released":30,"Gross":587908674,"Tickets Sold":91717406,"Inflation-Adjusted Gross":822705132,"Top Movie":"Saw II","Top Movie Gross (That Year)":87014325,"Top Movie Inflation-Adjusted Gross (That Year)":121765735},
+            {"Genre":"Horror","Year":2006,"Movies Released":31,"Gross":553283464,"Tickets Sold":84470742,"Inflation-Adjusted Gross":757702556,"Top Movie":"Saw III","Top Movie Gross (That Year)":80238724,"Top Movie Inflation-Adjusted Gross (That Year)":109884156},
+            {"Genre":"Horror","Year":2007,"Movies Released":31,"Gross":693525961,"Tickets Sold":93822372,"Inflation-Adjusted Gross":841586677,"Top Movie":"I am Legend","Top Movie Gross (That Year)":206129574,"Top Movie Inflation-Adjusted Gross (That Year)":250136135},
+            {"Genre":"Horror","Year":2008,"Movies Released":25,"Gross":293647307,"Tickets Sold":33899031,"Inflation-Adjusted Gross":304074308,"Top Movie":"Saw V","Top Movie Gross (That Year)":56746769,"Top Movie Inflation-Adjusted Gross (That Year)":58761767},
+            {"Genre":"Horror","Year":2009,"Movies Released":26,"Gross":584680109,"Tickets Sold":70287470,"Inflation-Adjusted Gross":630478606,"Top Movie":"Paranormal Activity","Top Movie Gross (That Year)":107854596,"Top Movie Inflation-Adjusted Gross (That Year)":116302939},
+            {"Genre":"Horror","Year":2010,"Movies Released":26,"Gross":531211616,"Tickets Sold":62321234,"Inflation-Adjusted Gross":559021469,"Top Movie":"Paranormal Activity 2","Top Movie Gross (That Year)":84660648,"Top Movie Inflation-Adjusted Gross (That Year)":89092780},
+            {"Genre":"Horror","Year":2011,"Movies Released":28,"Gross":404326975,"Tickets Sold":47796580,"Inflation-Adjusted Gross":428735323,"Top Movie":"Paranormal Activity 3","Top Movie Gross (That Year)":104007828,"Top Movie Inflation-Adjusted Gross (That Year)":110286556},
+            {"Genre":"Horror","Year":2012,"Movies Released":33,"Gross":308863451,"Tickets Sold":38801926,"Inflation-Adjusted Gross":348053276,"Top Movie":"Paranormal Activity 4","Top Movie Gross (That Year)":53900335,"Top Movie Inflation-Adjusted Gross (That Year)":60739424},
+            {"Genre":"Horror","Year":2013,"Movies Released":30,"Gross":448523012,"Tickets Sold":55168866,"Inflation-Adjusted Gross":494864728,"Top Movie":"The Conjuring","Top Movie Gross (That Year)":137400141,"Top Movie Inflation-Adjusted Gross (That Year)":151596421},
+            {"Genre":"Horror","Year":2014,"Movies Released":30,"Gross":254888301,"Tickets Sold":31198061,"Inflation-Adjusted Gross":279846607,"Top Movie":"Annabelle","Top Movie Gross (That Year)":84273813,"Top Movie Inflation-Adjusted Gross (That Year)":92525787},
+            {"Genre":"Horror","Year":2015,"Movies Released":24,"Gross":374324652,"Tickets Sold":43043467,"Inflation-Adjusted Gross":386099899,"Top Movie":"Goosebumps","Top Movie Gross (That Year)":79132868,"Top Movie Inflation-Adjusted Gross (That Year)":81622175},
+            {"Genre":"Horror","Year":2016,"Movies Released":28,"Gross":479942549,"Tickets Sold":54784636,"Inflation-Adjusted Gross":491418185,"Top Movie":"The Conjuring 2: The Enfield Poltergeist","Top Movie Gross (That Year)":102470008,"Top Movie Inflation-Adjusted Gross (That Year)":104920111},
+            {"Genre":"Horror","Year":2017,"Movies Released":34,"Gross":1039425572,"Tickets Sold":115877974,"Inflation-Adjusted Gross":1039425427,"Top Movie":"It","Top Movie Gross (That Year)":327481748,"Top Movie Inflation-Adjusted Gross (That Year)":327481702},
+            {"Genre":"Horror","Year":2018,"Movies Released":34,"Gross":901529308,"Tickets Sold":100504925,"Inflation-Adjusted Gross":901529177,"Top Movie":"A Quiet Place","Top Movie Gross (That Year)":188024361,"Top Movie Inflation-Adjusted Gross (That Year)":188024334},
+            {"Genre":"Romantic Comedy","Year":1995,"Movies Released":16,"Gross":297177737,"Tickets Sold":68316713,"Inflation-Adjusted Gross":612800916,"Top Movie":"While You Were Sleeping","Top Movie Gross (That Year)":81057016,"Top Movie Inflation-Adjusted Gross (That Year)":167145137},
+            {"Genre":"Romantic Comedy","Year":1996,"Movies Released":19,"Gross":427301022,"Tickets Sold":96674429,"Inflation-Adjusted Gross":867169628,"Top Movie":"Jerry Maguire","Top Movie Gross (That Year)":83338125,"Top Movie Inflation-Adjusted Gross (That Year)":169127353},
+            {"Genre":"Romantic Comedy","Year":1997,"Movies Released":22,"Gross":297133612,"Tickets Sold":64734983,"Inflation-Adjusted Gross":580672798,"Top Movie":"Jerry Maguire","Top Movie Gross (That Year)":70614467,"Top Movie Inflation-Adjusted Gross (That Year)":137998188},
+            {"Genre":"Romantic Comedy","Year":1998,"Movies Released":14,"Gross":500783066,"Tickets Sold":106776765,"Inflation-Adjusted Gross":957787582,"Top Movie":"There's Something About Mary","Top Movie Gross (That Year)":174711965,"Top Movie Inflation-Adjusted Gross (That Year)":334150577},
+            {"Genre":"Romantic Comedy","Year":1999,"Movies Released":23,"Gross":722597811,"Tickets Sold":142243650,"Inflation-Adjusted Gross":1275925541,"Top Movie":"Runaway Bride","Top Movie Gross (That Year)":152162347,"Top Movie Inflation-Adjusted Gross (That Year)":268680339},
+            {"Genre":"Romantic Comedy","Year":2000,"Movies Released":23,"Gross":374478694,"Tickets Sold":69476556,"Inflation-Adjusted Gross":623204707,"Top Movie":"What Women Want","Top Movie Gross (That Year)":115761883,"Top Movie Inflation-Adjusted Gross (That Year)":192650080},
+            {"Genre":"Romantic Comedy","Year":2001,"Movies Released":23,"Gross":529130923,"Tickets Sold":93486019,"Inflation-Adjusted Gross":838569590,"Top Movie":"America's Sweethearts","Top Movie Gross (That Year)":93607673,"Top Movie Inflation-Adjusted Gross (That Year)":148349954},
+            {"Genre":"Romantic Comedy","Year":2002,"Movies Released":24,"Gross":574879303,"Tickets Sold":98946512,"Inflation-Adjusted Gross":887550213,"Top Movie":"My Big Fat Greek Wedding","Top Movie Gross (That Year)":227898505,"Top Movie Inflation-Adjusted Gross (That Year)":351850146},
+            {"Genre":"Romantic Comedy","Year":2003,"Movies Released":25,"Gross":495065519,"Tickets Sold":82100406,"Inflation-Adjusted Gross":736440642,"Top Movie":"How to Lose a Guy in 10 Days","Top Movie Gross (That Year)":105807520,"Top Movie Inflation-Adjusted Gross (That Year)":157395244},
+            {"Genre":"Romantic Comedy","Year":2004,"Movies Released":33,"Gross":651589511,"Tickets Sold":104925831,"Inflation-Adjusted Gross":941184704,"Top Movie":"50 First Dates","Top Movie Gross (That Year)":120776832,"Top Movie Inflation-Adjusted Gross (That Year)":174455397},
+            {"Genre":"Romantic Comedy","Year":2005,"Movies Released":15,"Gross":440435727,"Tickets Sold":68710713,"Inflation-Adjusted Gross":616335096,"Top Movie":"Hitch","Top Movie Gross (That Year)":177784257,"Top Movie Inflation-Adjusted Gross (That Year)":248786986},
+            {"Genre":"Romantic Comedy","Year":2006,"Movies Released":19,"Gross":342785466,"Tickets Sold":52333650,"Inflation-Adjusted Gross":469432841,"Top Movie":"The Break-Up","Top Movie Gross (That Year)":118703275,"Top Movie Inflation-Adjusted Gross (That Year)":162560030},
+            {"Genre":"Romantic Comedy","Year":2007,"Movies Released":35,"Gross":733929251,"Tickets Sold":105730830,"Inflation-Adjusted Gross":948405545,"Top Movie":"Knocked Up","Top Movie Gross (That Year)":148761765,"Top Movie Inflation-Adjusted Gross (That Year)":192234446},
+            {"Genre":"Romantic Comedy","Year":2008,"Movies Released":25,"Gross":330849160,"Tickets Sold":38856854,"Inflation-Adjusted Gross":348545980,"Top Movie":"What Happens in Vegas...","Top Movie Gross (That Year)":80277646,"Top Movie Inflation-Adjusted Gross (That Year)":84571624},
+            {"Genre":"Romantic Comedy","Year":2009,"Movies Released":26,"Gross":642370662,"Tickets Sold":75508553,"Inflation-Adjusted Gross":677311720,"Top Movie":"The Proposal","Top Movie Gross (That Year)":163958031,"Top Movie Inflation-Adjusted Gross (That Year)":172876351},
+            {"Genre":"Romantic Comedy","Year":2010,"Movies Released":30,"Gross":517406269,"Tickets Sold":59285340,"Inflation-Adjusted Gross":531789500,"Top Movie":"Valentine's Day","Top Movie Gross (That Year)":110485654,"Top Movie Inflation-Adjusted Gross (That Year)":113557014},
+            {"Genre":"Romantic Comedy","Year":2011,"Movies Released":33,"Gross":577791604,"Tickets Sold":69473969,"Inflation-Adjusted Gross":623181502,"Top Movie":"Just Go With It","Top Movie Gross (That Year)":103028109,"Top Movie Inflation-Adjusted Gross (That Year)":111121746},
+            {"Genre":"Romantic Comedy","Year":2012,"Movies Released":31,"Gross":340203356,"Tickets Sold":42739101,"Inflation-Adjusted Gross":383369736,"Top Movie":"Think Like a Man","Top Movie Gross (That Year)":91547205,"Top Movie Inflation-Adjusted Gross (That Year)":103163085},
+            {"Genre":"Romantic Comedy","Year":2013,"Movies Released":25,"Gross":197247886,"Tickets Sold":24261722,"Inflation-Adjusted Gross":217627646,"Top Movie":"Warm Bodies","Top Movie Gross (That Year)":66380662,"Top Movie Inflation-Adjusted Gross (That Year)":73239148},
+            {"Genre":"Romantic Comedy","Year":2014,"Movies Released":30,"Gross":264693693,"Tickets Sold":32398230,"Inflation-Adjusted Gross":290612123,"Top Movie":"Think Like a Man Too","Top Movie Gross (That Year)":65028687,"Top Movie Inflation-Adjusted Gross (That Year)":71396204},
+            {"Genre":"Romantic Comedy","Year":2015,"Movies Released":23,"Gross":74106836,"Tickets Sold":8790834,"Inflation-Adjusted Gross":78853781,"Top Movie":"Focus","Top Movie Gross (That Year)":53862963,"Top Movie Inflation-Adjusted Gross (That Year)":57313178},
+            {"Genre":"Romantic Comedy","Year":2016,"Movies Released":30,"Gross":137209258,"Tickets Sold":15669133,"Inflation-Adjusted Gross":140552123,"Top Movie":"How to be Single","Top Movie Gross (That Year)":46843513,"Top Movie Inflation-Adjusted Gross (That Year)":47984774},
+            {"Genre":"Romantic Comedy","Year":2017,"Movies Released":15,"Gross":85994969,"Tickets Sold":9586948,"Inflation-Adjusted Gross":85994924,"Top Movie":"The Big Sick","Top Movie Gross (That Year)":42872467,"Top Movie Inflation-Adjusted Gross (That Year)":42872445},
+            {"Genre":"Romantic Comedy","Year":2018,"Movies Released":15,"Gross":241016524,"Tickets Sold":26869172,"Inflation-Adjusted Gross":241016473,"Top Movie":"Crazy Rich Asians","Top Movie Gross (That Year)":174519335,"Top Movie Inflation-Adjusted Gross (That Year)":174519298},
+            {"Genre":"Musical","Year":1996,"Movies Released":2,"Gross":2562599,"Tickets Sold":579772,"Inflation-Adjusted Gross":5200555,"Top Movie":"Evita","Top Movie Gross (That Year)":2278112,"Top Movie Inflation-Adjusted Gross (That Year)":4623215},
+            {"Genre":"Musical","Year":1997,"Movies Released":5,"Gross":114425007,"Tickets Sold":24929194,"Inflation-Adjusted Gross":223614870,"Top Movie":"Anastasia","Top Movie Gross (That Year)":53147865,"Top Movie Inflation-Adjusted Gross (That Year)":103864122},
+            {"Genre":"Musical","Year":1998,"Movies Released":8,"Gross":67210342,"Tickets Sold":14330561,"Inflation-Adjusted Gross":128545132,"Top Movie":"Grease","Top Movie Gross (That Year)":28350476,"Top Movie Inflation-Adjusted Gross (That Year)":54222543},
+            {"Genre":"Musical","Year":1999,"Movies Released":8,"Gross":23577029,"Tickets Sold":4641144,"Inflation-Adjusted Gross":41631062,"Top Movie":"The King and I","Top Movie Gross (That Year)":12064440,"Top Movie Inflation-Adjusted Gross (That Year)":21302746},
+            {"Genre":"Musical","Year":2000,"Movies Released":9,"Gross":93372793,"Tickets Sold":17323334,"Inflation-Adjusted Gross":155390306,"Top Movie":"Fantasia 2000 (Theatrical Release)","Top Movie Gross (That Year)":67320333,"Top Movie Inflation-Adjusted Gross (That Year)":112033996},
+            {"Genre":"Musical","Year":2001,"Movies Released":7,"Gross":69839373,"Tickets Sold":12339107,"Inflation-Adjusted Gross":110681790,"Top Movie":"Moulin Rouge","Top Movie Gross (That Year)":57065562,"Top Movie Inflation-Adjusted Gross (That Year)":90437790},
+            {"Genre":"Musical","Year":2002,"Movies Released":8,"Gross":57571456,"Tickets Sold":9909026,"Inflation-Adjusted Gross":88883963,"Top Movie":"Eight Crazy Nights","Top Movie Gross (That Year)":23443124,"Top Movie Inflation-Adjusted Gross (That Year)":36193592},
+            {"Genre":"Musical","Year":2003,"Movies Released":6,"Gross":169169167,"Tickets Sold":28054586,"Inflation-Adjusted Gross":251649636,"Top Movie":"Chicago","Top Movie Gross (That Year)":161445985,"Top Movie Inflation-Adjusted Gross (That Year)":240160923},
+            {"Genre":"Musical","Year":2004,"Movies Released":5,"Gross":22364844,"Tickets Sold":3601422,"Inflation-Adjusted Gross":32304755,"Top Movie":"The Phantom of the Opera","Top Movie Gross (That Year)":16178431,"Top Movie Inflation-Adjusted Gross (That Year)":23368831},
+            {"Genre":"Musical","Year":2005,"Movies Released":7,"Gross":81788548,"Tickets Sold":12759520,"Inflation-Adjusted Gross":114452894,"Top Movie":"The Phantom of the Opera","Top Movie Gross (That Year)":35047365,"Top Movie Inflation-Adjusted Gross (That Year)":49044426},
+            {"Genre":"Musical","Year":2006,"Movies Released":7,"Gross":68195041,"Tickets Sold":10411454,"Inflation-Adjusted Gross":93390742,"Top Movie":"Dreamgirls","Top Movie Gross (That Year)":37064395,"Top Movie Inflation-Adjusted Gross (That Year)":50758403},
+            {"Genre":"Musical","Year":2007,"Movies Released":11,"Gross":255937558,"Tickets Sold":36163584,"Inflation-Adjusted Gross":324387348,"Top Movie":"Hairspray","Top Movie Gross (That Year)":118871849,"Top Movie Inflation-Adjusted Gross (That Year)":150663795},
+            {"Genre":"Musical","Year":2008,"Movies Released":11,"Gross":260176422,"Tickets Sold":29103388,"Inflation-Adjusted Gross":261057390,"Top Movie":"Mamma Mia!","Top Movie Gross (That Year)":144130063,"Top Movie Inflation-Adjusted Gross (That Year)":144618093},
+            {"Genre":"Musical","Year":2009,"Movies Released":10,"Gross":39330920,"Tickets Sold":4692206,"Inflation-Adjusted Gross":42089088,"Top Movie":"Fame","Top Movie Gross (That Year)":22455510,"Top Movie Inflation-Adjusted Gross (That Year)":24030252},
+            {"Genre":"Musical","Year":2010,"Movies Released":9,"Gross":174481691,"Tickets Sold":22108696,"Inflation-Adjusted Gross":198315003,"Top Movie":"Tangled","Top Movie Gross (That Year)":167821986,"Top Movie Inflation-Adjusted Gross (That Year)":190745616},
+            {"Genre":"Musical","Year":2011,"Movies Released":4,"Gross":84688775,"Tickets Sold":9924084,"Inflation-Adjusted Gross":89019033,"Top Movie":"Footloose","Top Movie Gross (That Year)":51670512,"Top Movie Inflation-Adjusted Gross (That Year)":54312499},
+            {"Genre":"Musical","Year":2012,"Movies Released":6,"Gross":391900843,"Tickets Sold":49233771,"Inflation-Adjusted Gross":441626926,"Top Movie":"Beauty and the Beast","Top Movie Gross (That Year)":218813467,"Top Movie Inflation-Adjusted Gross (That Year)":246577471},
+            {"Genre":"Musical","Year":2013,"Movies Released":6,"Gross":357193074,"Tickets Sold":43935184,"Inflation-Adjusted Gross":394098600,"Top Movie":"Frozen","Top Movie Gross (That Year)":296691729,"Top Movie Inflation-Adjusted Gross (That Year)":327346199},
+            {"Genre":"Musical","Year":2014,"Movies Released":7,"Gross":252182790,"Tickets Sold":30866923,"Inflation-Adjusted Gross":276876299,"Top Movie":"Frozen","Top Movie Gross (That Year)":104046280,"Top Movie Inflation-Adjusted Gross (That Year)":114234397},
+            {"Genre":"Musical","Year":2015,"Movies Released":8,"Gross":68944880,"Tickets Sold":7956106,"Inflation-Adjusted Gross":71366271,"Top Movie":"Into the Woods","Top Movie Gross (That Year)":37130717,"Top Movie Inflation-Adjusted Gross (That Year)":38434773},
+            {"Genre":"Musical","Year":2016,"Movies Released":8,"Gross":248894081,"Tickets Sold":28773877,"Inflation-Adjusted Gross":258101677,"Top Movie":"Moana","Top Movie Gross (That Year)":210046114,"Top Movie Inflation-Adjusted Gross (That Year)":217816567},
+            {"Genre":"Musical","Year":2017,"Movies Released":9,"Gross":890162292,"Tickets Sold":99237710,"Inflation-Adjusted Gross":890162259,"Top Movie":"Beauty and the Beast","Top Movie Gross (That Year)":504014165,"Top Movie Inflation-Adjusted Gross (That Year)":504014146},
+            {"Genre":"Musical","Year":2018,"Movies Released":9,"Gross":417625409,"Tickets Sold":46558012,"Inflation-Adjusted Gross":417625368,"Top Movie":"Mary Poppins Returns","Top Movie Gross (That Year)":138817262,"Top Movie Inflation-Adjusted Gross (That Year)":138817248},
+            {"Genre":"Documentary","Year":1995,"Movies Released":9,"Gross":81994311,"Tickets Sold":18849263,"Inflation-Adjusted Gross":169077889,"Top Movie":"The Living Sea","Top Movie Gross (That Year)":64800000,"Top Movie Inflation-Adjusted Gross (That Year)":133622041},
+            {"Genre":"Documentary","Year":1996,"Movies Released":7,"Gross":6791655,"Tickets Sold":1536569,"Inflation-Adjusted Gross":13783024,"Top Movie":"Snowriders","Top Movie Gross (That Year)":2035470,"Top Movie Inflation-Adjusted Gross (That Year)":4130795},
+            {"Genre":"Documentary","Year":1997,"Movies Released":9,"Gross":10372500,"Tickets Sold":2259800,"Inflation-Adjusted Gross":20270406,"Top Movie":"When We Were Kings","Top Movie Gross (That Year)":2666118,"Top Movie Inflation-Adjusted Gross (That Year)":5210248},
+            {"Genre":"Documentary","Year":1998,"Movies Released":12,"Gross":85954501,"Tickets Sold":18327179,"Inflation-Adjusted Gross":164394796,"Top Movie":"Everest","Top Movie Gross (That Year)":66877098,"Top Movie Inflation-Adjusted Gross (That Year)":127907751},
+            {"Genre":"Documentary","Year":1999,"Movies Released":25,"Gross":88124882,"Tickets Sold":17347407,"Inflation-Adjusted Gross":155606241,"Top Movie":"Mysteries of Egypt","Top Movie Gross (That Year)":27042366,"Top Movie Inflation-Adjusted Gross (That Year)":47749975},
+            {"Genre":"Documentary","Year":2000,"Movies Released":42,"Gross":127001363,"Tickets Sold":23562383,"Inflation-Adjusted Gross":211354576,"Top Movie":"Dolphins","Top Movie Gross (That Year)":54000000,"Top Movie Inflation-Adjusted Gross (That Year)":89866336},
+            {"Genre":"Documentary","Year":2001,"Movies Released":25,"Gross":21807044,"Tickets Sold":3852823,"Inflation-Adjusted Gross":34559822,"Top Movie":"Shackleton's Antarctic Adventure","Top Movie Gross (That Year)":6683025,"Top Movie Inflation-Adjusted Gross (That Year)":10591264},
+            {"Genre":"Documentary","Year":2002,"Movies Released":31,"Gross":71658170,"Tickets Sold":12333577,"Inflation-Adjusted Gross":110632186,"Top Movie":"Space Station","Top Movie Gross (That Year)":30460417,"Top Movie Inflation-Adjusted Gross (That Year)":47027471},
+            {"Genre":"Documentary","Year":2003,"Movies Released":53,"Gross":91130211,"Tickets Sold":15112777,"Inflation-Adjusted Gross":135561610,"Top Movie":"Space Station","Top Movie Gross (That Year)":15713110,"Top Movie Inflation-Adjusted Gross (That Year)":23374186},
+            {"Genre":"Documentary","Year":2004,"Movies Released":89,"Gross":235480966,"Tickets Sold":37919594,"Inflation-Adjusted Gross":340138758,"Top Movie":"Fahrenheit 9/11","Top Movie Gross (That Year)":119114517,"Top Movie Inflation-Adjusted Gross (That Year)":172054092},
+            {"Genre":"Documentary","Year":2005,"Movies Released":99,"Gross":165886230,"Tickets Sold":25878321,"Inflation-Adjusted Gross":232128539,"Top Movie":"La marche de l'empereur","Top Movie Gross (That Year)":77437223,"Top Movie Inflation-Adjusted Gross (That Year)":108359744},
+            {"Genre":"Documentary","Year":2006,"Movies Released":111,"Gross":102355386,"Tickets Sold":15626720,"Inflation-Adjusted Gross":140171678,"Top Movie":"An Inconvenient Truth","Top Movie Gross (That Year)":24146161,"Top Movie Inflation-Adjusted Gross (That Year)":33067218},
+            {"Genre":"Documentary","Year":2007,"Movies Released":109,"Gross":70753270,"Tickets Sold":10283847,"Inflation-Adjusted Gross":92246108,"Top Movie":"Sicko","Top Movie Gross (That Year)":24538513,"Top Movie Inflation-Adjusted Gross (That Year)":31992618},
+            {"Genre":"Documentary","Year":2008,"Movies Released":126,"Gross":87432868,"Tickets Sold":11212195,"Inflation-Adjusted Gross":100573389,"Top Movie":"Sea Monsters: A Prehistoric Adventure","Top Movie Gross (That Year)":14144251,"Top Movie Inflation-Adjusted Gross (That Year)":16270029},
+            {"Genre":"Documentary","Year":2009,"Movies Released":93,"Gross":187444087,"Tickets Sold":23688746,"Inflation-Adjusted Gross":212488052,"Top Movie":"Michael Jackson's This Is It","Top Movie Gross (That Year)":72091016,"Top Movie Inflation-Adjusted Gross (That Year)":81722928},
+            {"Genre":"Documentary","Year":2010,"Movies Released":116,"Gross":93857579,"Tickets Sold":11330455,"Inflation-Adjusted Gross":101634181,"Top Movie":"Hubble 3D","Top Movie Gross (That Year)":20149829,"Top Movie Inflation-Adjusted Gross (That Year)":21819350},
+            {"Genre":"Documentary","Year":2011,"Movies Released":135,"Gross":82415597,"Tickets Sold":9786934,"Inflation-Adjusted Gross":87788798,"Top Movie":"African Cats","Top Movie Gross (That Year)":15428747,"Top Movie Inflation-Adjusted Gross (That Year)":16434646},
+            {"Genre":"Documentary","Year":2012,"Movies Released":149,"Gross":132328422,"Tickets Sold":16624104,"Inflation-Adjusted Gross":149118213,"Top Movie":"2016: Obama’s America","Top Movie Gross (That Year)":33349941,"Top Movie Inflation-Adjusted Gross (That Year)":37581372},
+            {"Genre":"Documentary","Year":2013,"Movies Released":160,"Gross":49307450,"Tickets Sold":6064807,"Inflation-Adjusted Gross":54401319,"Top Movie":"Justin Bieber’s Believe","Top Movie Gross (That Year)":5962982,"Top Movie Inflation-Adjusted Gross (That Year)":6579008},
+            {"Genre":"Documentary","Year":2014,"Movies Released":152,"Gross":88025980,"Tickets Sold":10774221,"Inflation-Adjusted Gross":96644762,"Top Movie":"Bears","Top Movie Gross (That Year)":17780194,"Top Movie Inflation-Adjusted Gross (That Year)":19521085},
+            {"Genre":"Documentary","Year":2015,"Movies Released":143,"Gross":65083771,"Tickets Sold":7648965,"Inflation-Adjusted Gross":68611216,"Top Movie":"Monkey Kingdom","Top Movie Gross (That Year)":16432322,"Top Movie Inflation-Adjusted Gross (That Year)":17322930},
+            {"Genre":"Documentary","Year":2016,"Movies Released":158,"Gross":50780120,"Tickets Sold":5860728,"Inflation-Adjusted Gross":52570730,"Top Movie":"Hillary’s America: The Secret History of the Democratic Party","Top Movie Gross (That Year)":13099931,"Top Movie Inflation-Adjusted Gross (That Year)":13561861},
+            {"Genre":"Documentary","Year":2017,"Movies Released":148,"Gross":44877018,"Tickets Sold":5002945,"Inflation-Adjusted Gross":44876417,"Top Movie":"Born in China","Top Movie Gross (That Year)":13873211,"Top Movie Inflation-Adjusted Gross (That Year)":13873025},
+            {"Genre":"Documentary","Year":2018,"Movies Released":142,"Gross":107099307,"Tickets Sold":11939660,"Inflation-Adjusted Gross":107098750,"Top Movie":"Won’t You Be My Neighbor?","Top Movie Gross (That Year)":22835787,"Top Movie Inflation-Adjusted Gross (That Year)":22835668},
+            {"Genre":"Dark Comedy","Year":1995,"Movies Released":3,"Gross":24185598,"Tickets Sold":5559905,"Inflation-Adjusted Gross":49872348,"Top Movie":"To Die For","Top Movie Gross (That Year)":21155211,"Top Movie Inflation-Adjusted Gross (That Year)":43623484},
+            {"Genre":"Dark Comedy","Year":1996,"Movies Released":3,"Gross":2567371,"Tickets Sold":580852,"Inflation-Adjusted Gross":5210242,"Top Movie":"Faithful","Top Movie Gross (That Year)":2104439,"Top Movie Inflation-Adjusted Gross (That Year)":4270764},
+            {"Genre":"Dark Comedy","Year":1997,"Movies Released":5,"Gross":37327594,"Tickets Sold":8132372,"Inflation-Adjusted Gross":72947377,"Top Movie":"Grosse Pointe Blank","Top Movie Gross (That Year)":28084357,"Top Movie Inflation-Adjusted Gross (That Year)":54883799},
+            {"Genre":"Dark Comedy","Year":1998,"Movies Released":6,"Gross":46315475,"Tickets Sold":9875365,"Inflation-Adjusted Gross":88582024,"Top Movie":"Dead Man on Campus","Top Movie Gross (That Year)":15064948,"Top Movie Inflation-Adjusted Gross (That Year)":28812909},
+            {"Genre":"Dark Comedy","Year":1999,"Movies Released":9,"Gross":101746444,"Tickets Sold":20028824,"Inflation-Adjusted Gross":179658551,"Top Movie":"Being John Malkovich","Top Movie Gross (That Year)":18243969,"Top Movie Inflation-Adjusted Gross (That Year)":32214247},
+            {"Genre":"Dark Comedy","Year":2000,"Movies Released":7,"Gross":51210561,"Tickets Sold":9501029,"Inflation-Adjusted Gross":85224230,"Top Movie":"Nurse Betty","Top Movie Gross (That Year)":25170054,"Top Movie Inflation-Adjusted Gross (That Year)":41887814},
+            {"Genre":"Dark Comedy","Year":2001,"Movies Released":3,"Gross":57007068,"Tickets Sold":10071918,"Inflation-Adjusted Gross":90345104,"Top Movie":"Snatch","Top Movie Gross (That Year)":30033056,"Top Movie Inflation-Adjusted Gross (That Year)":47596547},
+            {"Genre":"Dark Comedy","Year":2002,"Movies Released":4,"Gross":47766617,"Tickets Sold":8221446,"Inflation-Adjusted Gross":73746371,"Top Movie":"The Royal Tenenbaums","Top Movie Gross (That Year)":31656156,"Top Movie Inflation-Adjusted Gross (That Year)":48873602},
+            {"Genre":"Dark Comedy","Year":2003,"Movies Released":2,"Gross":56947540,"Tickets Sold":9444035,"Inflation-Adjusted Gross":84712994,"Top Movie":"Bad Santa","Top Movie Gross (That Year)":56909596,"Top Movie Inflation-Adjusted Gross (That Year)":84656550},
+            {"Genre":"Dark Comedy","Year":2004,"Movies Released":3,"Gross":5277208,"Tickets Sold":849791,"Inflation-Adjusted Gross":7622625,"Top Movie":"Bad Santa","Top Movie Gross (That Year)":3150732,"Top Movie Inflation-Adjusted Gross (That Year)":4551052},
+            {"Genre":"Dark Comedy","Year":2005,"Movies Released":6,"Gross":9517330,"Tickets Sold":1484760,"Inflation-Adjusted Gross":13318297,"Top Movie":"The Ice Harvest","Top Movie Gross (That Year)":9016782,"Top Movie Inflation-Adjusted Gross (That Year)":12617844},
+            {"Genre":"Dark Comedy","Year":2006,"Movies Released":5,"Gross":32291174,"Tickets Sold":4929948,"Inflation-Adjusted Gross":44221634,"Top Movie":"Thank You For Smoking","Top Movie Gross (That Year)":24793509,"Top Movie Inflation-Adjusted Gross (That Year)":33953844},
+            {"Genre":"Dark Comedy","Year":2007,"Movies Released":3,"Gross":2456085,"Tickets Sold":356987,"Inflation-Adjusted Gross":3202173,"Top Movie":"You Kill Me","Top Movie Gross (That Year)":2426851,"Top Movie Inflation-Adjusted Gross (That Year)":3164059},
+            {"Genre":"Dark Comedy","Year":2008,"Movies Released":6,"Gross":61625210,"Tickets Sold":6905436,"Inflation-Adjusted Gross":61941761,"Top Movie":"Burn After Reading","Top Movie Gross (That Year)":60355347,"Top Movie Inflation-Adjusted Gross (That Year)":60665375},
+            {"Genre":"Dark Comedy","Year":2009,"Movies Released":9,"Gross":54671157,"Tickets Sold":7289484,"Inflation-Adjusted Gross":65386671,"Top Movie":"The Men Who Stare at Goats","Top Movie Gross (That Year)":32018431,"Top Movie Inflation-Adjusted Gross (That Year)":38294024},
+            {"Genre":"Dark Comedy","Year":2010,"Movies Released":11,"Gross":53218987,"Tickets Sold":6745113,"Inflation-Adjusted Gross":60503664,"Top Movie":"Kick-Ass","Top Movie Gross (That Year)":48071303,"Top Movie Inflation-Adjusted Gross (That Year)":54651359},
+            {"Genre":"Dark Comedy","Year":2011,"Movies Released":11,"Gross":35839668,"Tickets Sold":4514637,"Inflation-Adjusted Gross":40496294,"Top Movie":"50/50","Top Movie Gross (That Year)":35016118,"Top Movie Inflation-Adjusted Gross (That Year)":39565741},
+            {"Genre":"Dark Comedy","Year":2012,"Movies Released":14,"Gross":92522208,"Tickets Sold":11623385,"Inflation-Adjusted Gross":104261763,"Top Movie":"Dark Shadows","Top Movie Gross (That Year)":79727149,"Top Movie Inflation-Adjusted Gross (That Year)":89843220},
+            {"Genre":"Dark Comedy","Year":2013,"Movies Released":12,"Gross":188672454,"Tickets Sold":23206939,"Inflation-Adjusted Gross":208166243,"Top Movie":"American Hustle","Top Movie Gross (That Year)":87923123,"Top Movie Inflation-Adjusted Gross (That Year)":97007410},
+            {"Genre":"Dark Comedy","Year":2014,"Movies Released":13,"Gross":181517016,"Tickets Sold":22217499,"Inflation-Adjusted Gross":199290966,"Top Movie":"American Hustle","Top Movie Gross (That Year)":62194684,"Top Movie Inflation-Adjusted Gross (That Year)":68284720},
+            {"Genre":"Dark Comedy","Year":2015,"Movies Released":13,"Gross":74779827,"Tickets Sold":8445027,"Inflation-Adjusted Gross":75751892,"Top Movie":"Krampus","Top Movie Gross (That Year)":41465710,"Top Movie Inflation-Adjusted Gross (That Year)":42004724},
+            {"Genre":"Dark Comedy","Year":2016,"Movies Released":6,"Gross":49182952,"Tickets Sold":5536337,"Inflation-Adjusted Gross":49660943,"Top Movie":"The Nice Guys","Top Movie Gross (That Year)":36261763,"Top Movie Inflation-Adjusted Gross (That Year)":36614178},
+            {"Genre":"Dark Comedy","Year":2017,"Movies Released":10,"Gross":61215946,"Tickets Sold":6824518,"Inflation-Adjusted Gross":61215926,"Top Movie":"Three Billboards Outside Ebbing, Missouri","Top Movie Gross (That Year)":24164629,"Top Movie Inflation-Adjusted Gross (That Year)":24164621},
+            {"Genre":"Dark Comedy","Year":2018,"Movies Released":10,"Gross":141282717,"Tickets Sold":15750577,"Inflation-Adjusted Gross":141282676,"Top Movie":"Three Billboards Outside Ebbing, Missouri","Top Movie Gross (That Year)":30349111,"Top Movie Inflation-Adjusted Gross (That Year)":30349102},
+            {"Genre":"Western","Year":1995,"Movies Released":6,"Gross":36538078,"Tickets Sold":8399556,"Inflation-Adjusted Gross":75344017,"Top Movie":"The Quick and the Dead","Top Movie Gross (That Year)":18552460,"Top Movie Inflation-Adjusted Gross (That Year)":38256442},
+            {"Genre":"Western","Year":1996,"Movies Released":2,"Gross":1118960,"Tickets Sold":253157,"Inflation-Adjusted Gross":2270818,"Top Movie":"Dead Man","Top Movie Gross (That Year)":1025488,"Top Movie Inflation-Adjusted Gross (That Year)":2081126},
+            {"Genre":"Western","Year":1999,"Movies Released":1,"Gross":491069,"Tickets Sold":96667,"Inflation-Adjusted Gross":867103,"Top Movie":"Ride With the Devil","Top Movie Gross (That Year)":491069,"Top Movie Inflation-Adjusted Gross (That Year)":867103},
+            {"Genre":"Western","Year":2000,"Movies Released":4,"Gross":64719710,"Tickets Sold":12007366,"Inflation-Adjusted Gross":107706073,"Top Movie":"Shanghai Noon","Top Movie Gross (That Year)":56932305,"Top Movie Inflation-Adjusted Gross (That Year)":94746330},
+            {"Genre":"Western","Year":2001,"Movies Released":4,"Gross":22389813,"Tickets Sold":3955796,"Inflation-Adjusted Gross":35483490,"Top Movie":"American Outlaws","Top Movie Gross (That Year)":13264986,"Top Movie Inflation-Adjusted Gross (That Year)":21022418},
+            {"Genre":"Western","Year":2003,"Movies Released":2,"Gross":84453058,"Tickets Sold":14005482,"Inflation-Adjusted Gross":125629174,"Top Movie":"Open Range","Top Movie Gross (That Year)":58331254,"Top Movie Inflation-Adjusted Gross (That Year)":86771367},
+            {"Genre":"Western","Year":2004,"Movies Released":4,"Gross":90475689,"Tickets Sold":14569352,"Inflation-Adjusted Gross":130687087,"Top Movie":"Hidalgo","Top Movie Gross (That Year)":67286731,"Top Movie Inflation-Adjusted Gross (That Year)":97191930},
+            {"Genre":"Western","Year":2005,"Movies Released":1,"Gross":14873,"Tickets Sold":2320,"Inflation-Adjusted Gross":20810,"Top Movie":"Major Dundee","Top Movie Gross (That Year)":14873,"Top Movie Inflation-Adjusted Gross (That Year)":20810},
+            {"Genre":"Western","Year":2006,"Movies Released":2,"Gross":584825,"Tickets Sold":89285,"Inflation-Adjusted Gross":800886,"Top Movie":"Down in the Valley","Top Movie Gross (That Year)":568932,"Top Movie Inflation-Adjusted Gross (That Year)":779121},
+            {"Genre":"Western","Year":2007,"Movies Released":4,"Gross":57964064,"Tickets Sold":8293652,"Inflation-Adjusted Gross":74394058,"Top Movie":"3:10 to Yuma","Top Movie Gross (That Year)":53606916,"Top Movie Inflation-Adjusted Gross (That Year)":68801870},
+            {"Genre":"Western","Year":2008,"Movies Released":4,"Gross":20317697,"Tickets Sold":2270814,"Inflation-Adjusted Gross":20369202,"Top Movie":"Appaloosa","Top Movie Gross (That Year)":20080574,"Top Movie Inflation-Adjusted Gross (That Year)":20131478},
+            {"Genre":"Western","Year":2009,"Movies Released":2,"Gross":169906,"Tickets Sold":19795,"Inflation-Adjusted Gross":177561,"Top Movie":"Appaloosa","Top Movie Gross (That Year)":130820,"Top Movie Inflation-Adjusted Gross (That Year)":136714},
+            {"Genre":"Western","Year":2010,"Movies Released":3,"Gross":92697737,"Tickets Sold":10426173,"Inflation-Adjusted Gross":93522772,"Top Movie":"True Grit","Top Movie Gross (That Year)":86670382,"Top Movie Inflation-Adjusted Gross (That Year)":87441772},
+            {"Genre":"Western","Year":2011,"Movies Released":2,"Gross":84669662,"Tickets Sold":9440622,"Inflation-Adjusted Gross":84682379,"Top Movie":"True Grit","Top Movie Gross (That Year)":84572623,"Top Movie Inflation-Adjusted Gross (That Year)":84585325},
+            {"Genre":"Western","Year":2012,"Movies Released":2,"Gross":106297399,"Tickets Sold":13353944,"Inflation-Adjusted Gross":119784878,"Top Movie":"Django Unchained","Top Movie Gross (That Year)":106280122,"Top Movie Inflation-Adjusted Gross (That Year)":119765409},
+            {"Genre":"Western","Year":2013,"Movies Released":4,"Gross":145859175,"Tickets Sold":17940856,"Inflation-Adjusted Gross":160929478,"Top Movie":"The Lone Ranger","Top Movie Gross (That Year)":89302115,"Top Movie Inflation-Adjusted Gross (That Year)":98528891},
+            {"Genre":"Western","Year":2014,"Movies Released":2,"Gross":2323054,"Tickets Sold":284339,"Inflation-Adjusted Gross":2550521,"Top Movie":"The Homesman","Top Movie Gross (That Year)":2272797,"Top Movie Inflation-Adjusted Gross (That Year)":2495343},
+            {"Genre":"Western","Year":2015,"Movies Released":6,"Gross":29521197,"Tickets Sold":3501919,"Inflation-Adjusted Gross":31412213,"Top Movie":"The Hateful Eight","Top Movie Gross (That Year)":29045855,"Top Movie Inflation-Adjusted Gross (That Year)":30906422},
+            {"Genre":"Western","Year":2016,"Movies Released":7,"Gross":147170965,"Tickets Sold":16628696,"Inflation-Adjusted Gross":149159403,"Top Movie":"The Magnificent Seven","Top Movie Gross (That Year)":93420253,"Top Movie Inflation-Adjusted Gross (That Year)":94682461},
+            {"Genre":"Western","Year":2017,"Movies Released":8,"Gross":61575125,"Tickets Sold":6864560,"Inflation-Adjusted Gross":61575103,"Top Movie":"The Dark Tower","Top Movie Gross (That Year)":50701325,"Top Movie Inflation-Adjusted Gross (That Year)":50701307},
+            {"Genre":"Western","Year":2018,"Movies Released":7,"Gross":33408750,"Tickets Sold":3724495,"Inflation-Adjusted Gross":33408720,"Top Movie":"Hostiles","Top Movie Gross (That Year)":29733369,"Top Movie Inflation-Adjusted Gross (That Year)":29733342},
+            {"Genre":"Concert or Performance","Year":1999,"Movies Released":1,"Gross":148443,"Tickets Sold":29221,"Inflation-Adjusted Gross":262112,"Top Movie":"Stop Making Sense","Top Movie Gross (That Year)":148443,"Top Movie Inflation-Adjusted Gross (That Year)":262112},
+            {"Genre":"Concert or Performance","Year":2000,"Movies Released":2,"Gross":38847717,"Tickets Sold":7207367,"Inflation-Adjusted Gross":64650082,"Top Movie":"The Original Kings of Comedy","Top Movie Gross (That Year)":38168022,"Top Movie Inflation-Adjusted Gross (That Year)":63518939},
+            {"Genre":"Concert or Performance","Year":2001,"Movies Released":3,"Gross":3215111,"Tickets Sold":568039,"Inflation-Adjusted Gross":5095310,"Top Movie":"N'sync: Bigger than Live","Top Movie Gross (That Year)":1688717,"Top Movie Inflation-Adjusted Gross (That Year)":2676280},
+            {"Genre":"Concert or Performance","Year":2002,"Movies Released":3,"Gross":20338177,"Tickets Sold":3500545,"Inflation-Adjusted Gross":31399889,"Top Movie":"Martin Lawrence Live: RunTelDat","Top Movie Gross (That Year)":19184820,"Top Movie Inflation-Adjusted Gross (That Year)":29619234},
+            {"Genre":"Concert or Performance","Year":2003,"Movies Released":1,"Gross":70000,"Tickets Sold":11608,"Inflation-Adjusted Gross":104124,"Top Movie":"Concert for George","Top Movie Gross (That Year)":70000,"Top Movie Inflation-Adjusted Gross (That Year)":104124},
+            {"Genre":"Concert or Performance","Year":2004,"Movies Released":1,"Gross":1174079,"Tickets Sold":189062,"Inflation-Adjusted Gross":1695886,"Top Movie":"Festival Express","Top Movie Gross (That Year)":1174079,"Top Movie Inflation-Adjusted Gross (That Year)":1695886},
+            {"Genre":"Concert or Performance","Year":2005,"Movies Released":3,"Gross":1154117,"Tickets Sold":180048,"Inflation-Adjusted Gross":1615031,"Top Movie":"Sarah Silverman: Jesus is Magic","Top Movie Gross (That Year)":1149330,"Top Movie Inflation-Adjusted Gross (That Year)":1608332},
+            {"Genre":"Concert or Performance","Year":2006,"Movies Released":4,"Gross":2484609,"Tickets Sold":379327,"Inflation-Adjusted Gross":3402563,"Top Movie":"Neil Young: Heart of Gold","Top Movie Gross (That Year)":1828069,"Top Movie Inflation-Adjusted Gross (That Year)":2503460},
+            {"Genre":"Concert or Performance","Year":2007,"Movies Released":3,"Gross":192068,"Tickets Sold":27915,"Inflation-Adjusted Gross":250398,"Top Movie":"Aida at La Scala","Top Movie Gross (That Year)":118108,"Top Movie Inflation-Adjusted Gross (That Year)":153977},
+            {"Genre":"Concert or Performance","Year":2008,"Movies Released":11,"Gross":75628951,"Tickets Sold":8718895,"Inflation-Adjusted Gross":78208488,"Top Movie":"Hannah Montana/Miley Cyrus: Best of Both Worlds Concert Tour","Top Movie Gross (That Year)":65281781,"Top Movie Inflation-Adjusted Gross (That Year)":67508399},
+            {"Genre":"Concert or Performance","Year":2009,"Movies Released":3,"Gross":19953639,"Tickets Sold":2241766,"Inflation-Adjusted Gross":20108641,"Top Movie":"Jonas Brothers: The 3D Concert Experience","Top Movie Gross (That Year)":19162740,"Top Movie Inflation-Adjusted Gross (That Year)":19311598},
+            {"Genre":"Concert or Performance","Year":2010,"Movies Released":3,"Gross":3128252,"Tickets Sold":387512,"Inflation-Adjusted Gross":3475983,"Top Movie":"U2 3D","Top Movie Gross (That Year)":2054521,"Top Movie Inflation-Adjusted Gross (That Year)":2282898},
+            {"Genre":"Concert or Performance","Year":2011,"Movies Released":6,"Gross":95445317,"Tickets Sold":10795027,"Inflation-Adjusted Gross":96831392,"Top Movie":"Justin Bieber: Never Say Never","Top Movie Gross (That Year)":73013910,"Top Movie Inflation-Adjusted Gross (That Year)":74074232},
+            {"Genre":"Concert or Performance","Year":2012,"Movies Released":4,"Gross":28347099,"Tickets Sold":3561192,"Inflation-Adjusted Gross":31943892,"Top Movie":"Katy Perry: Part of Me","Top Movie Gross (That Year)":25326071,"Top Movie Inflation-Adjusted Gross (That Year)":28539544},
+            {"Genre":"Concert or Performance","Year":2013,"Movies Released":4,"Gross":64881892,"Tickets Sold":7980550,"Inflation-Adjusted Gross":71585534,"Top Movie":"Kevin Hart: Let Me Explain","Top Movie Gross (That Year)":32244051,"Top Movie Inflation-Adjusted Gross (That Year)":35575529},
+            {"Genre":"Concert or Performance","Year":2014,"Movies Released":3,"Gross":3148116,"Tickets Sold":385326,"Inflation-Adjusted Gross":3456374,"Top Movie":"The Fluffy Movie","Top Movie Gross (That Year)":2827393,"Top Movie Inflation-Adjusted Gross (That Year)":3104246},
+            {"Genre":"Concert or Performance","Year":2015,"Movies Released":1,"Gross":1150000,"Tickets Sold":136417,"Inflation-Adjusted Gross":1223660,"Top Movie":"The Met: Live in HD - Tannhauser","Top Movie Gross (That Year)":1150000,"Top Movie Inflation-Adjusted Gross (That Year)":1223660},
+            {"Genre":"Concert or Performance","Year":2016,"Movies Released":4,"Gross":27211033,"Tickets Sold":3145782,"Inflation-Adjusted Gross":28217665,"Top Movie":"Kevin Hart: What Now?","Top Movie Gross (That Year)":23591043,"Top Movie Inflation-Adjusted Gross (That Year)":24463759},
+            {"Genre":"Concert or Performance","Year":2017,"Movies Released":3,"Gross":2984320,"Tickets Sold":332699,"Inflation-Adjusted Gross":2984310,"Top Movie":"Mayweather vs. McGregor","Top Movie Gross (That Year)":2620183,"Top Movie Inflation-Adjusted Gross (That Year)":2620174},
+            {"Genre":"Multiple Genres","Year":2000,"Movies Released":1,"Gross":332235,"Tickets Sold":61639,"Inflation-Adjusted Gross":552902,"Top Movie":"Under Suspicion","Top Movie Gross (That Year)":332235,"Top Movie Inflation-Adjusted Gross (That Year)":552902},
+            {"Genre":"Multiple Genres","Year":2001,"Movies Released":1,"Gross":2010,"Tickets Sold":355,"Inflation-Adjusted Gross":3184,"Top Movie":"Under Suspicion","Top Movie Gross (That Year)":2010,"Top Movie Inflation-Adjusted Gross (That Year)":3184},
+            {"Genre":"Multiple Genres","Year":2002,"Movies Released":1,"Gross":391835,"Tickets Sold":67441,"Inflation-Adjusted Gross":604946,"Top Movie":"Kurosawa & Mifune Festival","Top Movie Gross (That Year)":391835,"Top Movie Inflation-Adjusted Gross (That Year)":604946},
+            {"Genre":"Multiple Genres","Year":2003,"Movies Released":2,"Gross":498239,"Tickets Sold":82626,"Inflation-Adjusted Gross":741155,"Top Movie":"The Animation Show","Top Movie Gross (That Year)":306362,"Top Movie Inflation-Adjusted Gross (That Year)":455729},
+            {"Genre":"Multiple Genres","Year":2004,"Movies Released":2,"Gross":55134,"Tickets Sold":8877,"Inflation-Adjusted Gross":79627,"Top Movie":"The Animation Show","Top Movie Gross (That Year)":36709,"Top Movie Inflation-Adjusted Gross (That Year)":53017},
+            {"Genre":"Multiple Genres","Year":2006,"Movies Released":3,"Gross":748135,"Tickets Sold":114218,"Inflation-Adjusted Gross":1024535,"Top Movie":"Viva Pedro","Top Movie Gross (That Year)":579539,"Top Movie Inflation-Adjusted Gross (That Year)":793651},
+            {"Genre":"Multiple Genres","Year":2007,"Movies Released":2,"Gross":335887,"Tickets Sold":48819,"Inflation-Adjusted Gross":437906,"Top Movie":"2006 Academy Award Nominated Short Films","Top Movie Gross (That Year)":335090,"Top Movie Inflation-Adjusted Gross (That Year)":436867},
+            {"Genre":"Multiple Genres","Year":2008,"Movies Released":1,"Gross":508695,"Tickets Sold":70848,"Inflation-Adjusted Gross":635507,"Top Movie":"A Collection of 2007 Academy Award Nominated Short Films - Live Action & Animation","Top Movie Gross (That Year)":508695,"Top Movie Inflation-Adjusted Gross (That Year)":635507},
+            {"Genre":"Multiple Genres","Year":2009,"Movies Released":1,"Gross":644635,"Tickets Sold":85951,"Inflation-Adjusted Gross":770980,"Top Movie":"2009 Oscar Shorts","Top Movie Gross (That Year)":644635,"Top Movie Inflation-Adjusted Gross (That Year)":770980},
+            {"Genre":"Multiple Genres","Year":2010,"Movies Released":3,"Gross":1173911,"Tickets Sold":148783,"Inflation-Adjusted Gross":1334584,"Top Movie":"2010 Oscar Shorts","Top Movie Gross (That Year)":1018169,"Top Movie Inflation-Adjusted Gross (That Year)":1157526},
+            {"Genre":"Multiple Genres","Year":2011,"Movies Released":4,"Gross":1510823,"Tickets Sold":190518,"Inflation-Adjusted Gross":1708946,"Top Movie":"2011 Oscar Shorts","Top Movie Gross (That Year)":1352152,"Top Movie Inflation-Adjusted Gross (That Year)":1529468},
+            {"Genre":"Multiple Genres","Year":2012,"Movies Released":2,"Gross":1900200,"Tickets Sold":238718,"Inflation-Adjusted Gross":2141300,"Top Movie":"2012 Oscar Shorts","Top Movie Gross (That Year)":1702415,"Top Movie Inflation-Adjusted Gross (That Year)":1918420},
+            {"Genre":"Multiple Genres","Year":2013,"Movies Released":1,"Gross":2142342,"Tickets Sold":263510,"Inflation-Adjusted Gross":2363685,"Top Movie":"2013 Oscar Shorts","Top Movie Gross (That Year)":2142342,"Top Movie Inflation-Adjusted Gross (That Year)":2363685},
+            {"Genre":"Multiple Genres","Year":2014,"Movies Released":2,"Gross":5136187,"Tickets Sold":628663,"Inflation-Adjusted Gross":5639107,"Top Movie":"Saving Christmas","Top Movie Gross (That Year)":2778297,"Top Movie Inflation-Adjusted Gross (That Year)":3050339},
+            {"Genre":"Multiple Genres","Year":2015,"Movies Released":1,"Gross":2412493,"Tickets Sold":286179,"Inflation-Adjusted Gross":2567026,"Top Movie":"2015 Oscar Shorts","Top Movie Gross (That Year)":2412493,"Top Movie Inflation-Adjusted Gross (That Year)":2567026},
+            {"Genre":"Multiple Genres","Year":2016,"Movies Released":4,"Gross":2862219,"Tickets Sold":330890,"Inflation-Adjusted Gross":2968083,"Top Movie":"2016 Oscar Shorts","Top Movie Gross (That Year)":2816816,"Top Movie Inflation-Adjusted Gross (That Year)":2921001},
+            {"Genre":"Multiple Genres","Year":2017,"Movies Released":5,"Gross":4614134,"Tickets Sold":514394,"Inflation-Adjusted Gross":4614114,"Top Movie":"2017 Oscar Shorts","Top Movie Gross (That Year)":2835355,"Top Movie Inflation-Adjusted Gross (That Year)":2835343},
+            {"Genre":"Multiple Genres","Year":2018,"Movies Released":3,"Gross":4787450,"Tickets Sold":533717,"Inflation-Adjusted Gross":4787441,"Top Movie":"2018 Oscar Shorts","Top Movie Gross (That Year)":3508777,"Top Movie Inflation-Adjusted Gross (That Year)":3508770},
+            {"Genre":"Reality","Year":2014,"Movies Released":1,"Gross":16826,"Tickets Sold":2059,"Inflation-Adjusted Gross":18469,"Top Movie":"The Principle","Top Movie Gross (That Year)":16826,"Top Movie Inflation-Adjusted Gross (That Year)":18469},
+            {"Genre":"Reality","Year":2015,"Movies Released":3,"Gross":604870,"Tickets Sold":71751,"Inflation-Adjusted Gross":643606,"Top Movie":"Benpao Ba! Xiongdi","Top Movie Gross (That Year)":309297,"Top Movie Inflation-Adjusted Gross (That Year)":329104},
+            {"Genre":"Reality","Year":2018,"Movies Released":1,"Gross":2027,"Tickets Sold":225,"Inflation-Adjusted Gross":2018,"Top Movie":"The Cage Fighter","Top Movie Gross (That Year)":2027,"Top Movie Inflation-Adjusted Gross (That Year)":2018}
+        ];
+
+        // Keep a complete year axis so missing genre/year records can be shown in the 3D grid.
+        const allGenres = [...new Set(rawDataset.map(d => d.Genre))];
+        const allYears = Array.from({length: 24}, (_, i) => 1995 + i);
+
+        // Add every dataset genre to the genre selector.
+        const genreSelect = document.getElementById('genre-select');
+        allGenres.forEach(g => {
+            const opt = document.createElement('option');
+            opt.value = g;
+            opt.textContent = g;
+            genreSelect.appendChild(opt);
+        });
+
+        // Shared filter values used by the charts, KPIs, and table.
+        let currentFilters = {
+            genre: 'ALL',
+            metric: 'Inflation-Adjusted Gross',
+            startYear: 1995,
+            endYear: 2018,
+            searchQuery: ''
+        };
+
+        // 2. 3D scene, metric visuals, and interaction
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0f17);
+
+        const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(0, 14, 24);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        // Scene lighting: soft fill plus directional illumination.
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xbfd0ff, 0.35);
+        dirLight.position.set(15, 30, 20);
+        scene.add(dirLight);
+
+        // Rotate the landscape, floor, and grid together; keep the studio lights fixed.
+        const stage = new THREE.Group();
+        scene.add(stage);
+
+        // Dark floor beneath the landscape and lighting effects.
+        const floorDisc = new THREE.Mesh(
+            new THREE.CircleGeometry(28, 64),
+            new THREE.MeshStandardMaterial({ color: 0x0c121e, roughness: 0.95, metalness: 0 })
+        );
+        floorDisc.rotation.x = -Math.PI / 2;
+        floorDisc.position.y = -0.03;
+        stage.add(floorDisc);
+
+        // Reference grid beneath the data stacks.
+        const gridHelper = new THREE.GridHelper(30, 30, 0x1e293b, 0x0f172a);
+        gridHelper.position.y = 0;
+        stage.add(gridHelper);
+
+        // Build four decorative studio lights around the landscape.
+        (function buildFilmLightRig() {
+            const rig = new THREE.Group();
+            scene.add(rig);
+
+            const aimPoint = new THREE.Object3D();
+            aimPoint.position.set(0, 2, 0);
+            scene.add(aimPoint);
+
+            const blackMat = new THREE.MeshStandardMaterial({ color: 0x14161b, roughness: 0.5, metalness: 0.55 });
+            const steelMat = new THREE.MeshStandardMaterial({ color: 0x9aa3b2, roughness: 0.35, metalness: 0.8 });
+            const lensMat = new THREE.MeshBasicMaterial({ color: 0xfff6dc });
+
+            // Radial texture used for the glow around each lamp lens.
+            const glowCanvas = document.createElement('canvas');
+            glowCanvas.width = glowCanvas.height = 128;
+            const gg = glowCanvas.getContext('2d');
+            const rg = gg.createRadialGradient(64, 64, 0, 64, 64, 64);
+            rg.addColorStop(0, 'rgba(255,248,225,1)');
+            rg.addColorStop(0.25, 'rgba(255,230,170,0.55)');
+            rg.addColorStop(1, 'rgba(255,220,150,0)');
+            gg.fillStyle = rg; gg.fillRect(0, 0, 128, 128);
+            const glowTex = new THREE.CanvasTexture(glowCanvas);
+
+            // Beam texture that fades from the lamp toward its target.
+            const beamCanvas = document.createElement('canvas');
+            beamCanvas.width = 4; beamCanvas.height = 128;
+            const bg = beamCanvas.getContext('2d');
+            const lg = bg.createLinearGradient(0, 0, 0, 128);   // The top of the texture represents the far end of the beam.
+            lg.addColorStop(0, 'rgba(255,236,190,0)');
+            lg.addColorStop(0.6, 'rgba(255,236,190,0.035)');
+            lg.addColorStop(1, 'rgba(255,240,200,0.16)');
+            bg.fillStyle = lg; bg.fillRect(0, 0, 4, 128);
+            const beamTex = new THREE.CanvasTexture(beamCanvas);
+
+            // Overhead frame supporting the four lights.
+            const PIPE_Y = 13.2, HX = 11.5, HZ = 7.5;
+            const pipeGeoX = new THREE.CylinderGeometry(0.09, 0.09, HX * 2, 12);
+            const pipeGeoZ = new THREE.CylinderGeometry(0.09, 0.09, HZ * 2, 12);
+            [-HZ, HZ].forEach(z => {
+                const pipe = new THREE.Mesh(pipeGeoX, steelMat);
+                pipe.rotation.z = Math.PI / 2; pipe.position.set(0, PIPE_Y, z);
+                rig.add(pipe);
+            });
+            [-HX, HX].forEach(x => {
+                const pipe = new THREE.Mesh(pipeGeoZ, steelMat);
+                pipe.rotation.x = Math.PI / 2; pipe.position.set(x, PIPE_Y, 0);
+                rig.add(pipe);
+            });
+
+            function makeFilmLight(x, z) {
+                const root = new THREE.Group();            // Keep the yoke upright while aiming the lamp head.
+                root.position.set(x, PIPE_Y - 2.6, z);
+                rig.add(root);
+
+                // Stem and clamp connecting the fixture to the frame.
+                const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 8), steelMat);
+                stem.position.y = 1.95; root.add(stem);
+                const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.4), blackMat);
+                clamp.position.y = 2.65; root.add(clamp);
+
+                // U-shaped bracket supporting the lamp head.
+                const armGeo = new THREE.BoxGeometry(0.08, 1.35, 0.12);
+                [-0.82, 0.82].forEach(ax => {
+                    const arm = new THREE.Mesh(armGeo, blackMat);
+                    arm.position.set(ax, 0.5, 0); root.add(arm);
+                    const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.12, 12), steelMat);
+                    knob.rotation.z = Math.PI / 2; knob.position.set(ax, 0, 0); root.add(knob);
+                });
+                const cross = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.1, 0.14), blackMat);
+                cross.position.y = 1.2; root.add(cross);
+
+                // Aimable lamp head; its local +Z axis points out through the lens.
+                const head = new THREE.Group();
+                root.add(head);
+
+                const body = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.46, 1.3, 22), blackMat);
+                body.rotation.x = Math.PI / 2; head.add(body);
+                const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.3, 14), blackMat);
+                vent.rotation.x = Math.PI / 2; vent.position.z = -0.8; head.add(vent);
+                const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.72, 0.12, 22), steelMat);
+                ring.rotation.x = Math.PI / 2; ring.position.z = 0.68; head.add(ring);
+                const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.05, 22), lensMat);
+                lens.rotation.x = Math.PI / 2; lens.position.z = 0.73; head.add(lens);
+
+                // Four angled flaps around the lens.
+                for (let k = 0; k < 4; k++) {
+                    const doorRoot = new THREE.Group();
+                    doorRoot.rotation.z = k * Math.PI / 2;
+                    const pivot = new THREE.Group();
+                    pivot.position.set(0, 0.74, 0.7);
+                    pivot.rotation.x = -0.5;                 // Angle each flap away from the lens.
+                    const flap = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.05, 0.6), blackMat);
+                    flap.position.z = 0.3;
+                    pivot.add(flap); doorRoot.add(pivot); head.add(doorRoot);
+                }
+
+                // Spotlight aimed at the center of the landscape.
+                const spot = new THREE.SpotLight(0xfff0d0, 0.75, 0, 0.62, 0.6, 1);
+                spot.position.set(0, 0, 0.75);
+                spot.target = aimPoint;
+                head.add(spot);
+
+                // Visible lens glow.
+                const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+                    map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true
+                }));
+                glow.scale.set(3.4, 3.4, 1); glow.position.z = 0.9; head.add(glow);
+
+                // Translucent cone representing the beam of light.
+                const L = 15;
+                const beam = new THREE.Mesh(
+                    new THREE.CylinderGeometry(3.4, 0.6, L, 32, 1, true),
+                    new THREE.MeshBasicMaterial({
+                        map: beamTex, transparent: true, depthWrite: false,
+                        blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+                    })
+                );
+                beam.rotation.x = Math.PI / 2;               // Point the cone's wide end toward the target.
+                beam.position.z = 0.75 + L / 2;
+                head.add(beam);
+
+                // Point the lamp head toward the center of the scene.
+                scene.updateMatrixWorld(true);
+                head.lookAt(aimPoint.getWorldPosition(new THREE.Vector3()));
+            }
+
+            // Place one fixture at each corner of the overhead frame.
+            makeFilmLight(-HX, -HZ);
+            makeFilmLight(HX, -HZ);
+            makeFilmLight(-HX, HZ);
+            makeFilmLight(HX, HZ);
+        })();
+
+        // Build each metric with a distinct stack style; stack height encodes the selected value.
+        let meshBars = [];
+
+        function mulberry32(a) {
+            return function() {
+                a |= 0; a = a + 0x6D2B79F5 | 0;
+                let t = Math.imul(a ^ a >>> 15, 1 | a);
+                t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+                return ((t ^ t >>> 14) >>> 0) / 4294967296;
+            };
+        }
+
+        // Create a repeating canvas texture for a 3D material.
+        function makeTex(w, h, draw) {
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            draw(c.getContext('2d'), w, h);
+            const t = new THREE.CanvasTexture(c);
+            t.wrapS = t.wrapT = THREE.RepeatWrapping;
+            t.anisotropy = 4;
+            return t;
+        }
+
+        // Textures for inflation-adjusted gross stacks (gold coins).
+        const coinEdgeTex = makeTex(128, 32, (g, w, h) => {
+            g.fillStyle = '#e6b422'; g.fillRect(0, 0, w, h);
+            for (let x = 0; x < w; x += 4) {          // Fine ridges along the coin edge.
+                g.fillStyle = (x / 4) % 2 ? 'rgba(255,240,150,0.45)' : 'rgba(120,80,0,0.35)';
+                g.fillRect(x, 0, 2, h);
+            }
+            g.fillStyle = '#fff1a8'; g.fillRect(0, 0, w, 2);
+            g.fillStyle = '#7a5604'; g.fillRect(0, h - 4, w, 4);   // Dark seam between stacked coins.
+        });
+        const coinFaceTex = makeTex(128, 128, (g, w, h) => {
+            const grad = g.createRadialGradient(64, 64, 8, 64, 64, 80);
+            grad.addColorStop(0, '#ffe680'); grad.addColorStop(1, '#d9a21b');
+            g.fillStyle = grad; g.fillRect(0, 0, w, h);
+            g.strokeStyle = '#8a6508'; g.lineWidth = 5;
+            g.beginPath(); g.arc(64, 64, 54, 0, Math.PI * 2); g.stroke();
+            g.lineWidth = 2;
+            g.beginPath(); g.arc(64, 64, 46, 0, Math.PI * 2); g.stroke();
+            g.save(); g.translate(64, 64); g.rotate(-Math.PI / 2);   // Rotate text to align with the cylinder cap UVs.
+            g.fillStyle = '#8a6508'; g.font = 'bold 66px Georgia, serif';
+            g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillText('$', 0, 4);
+            g.restore();
+        });
+
+        // Textures for unadjusted gross stacks (cash bundles).
+        const cashSideTex = makeTex(64, 16, (g, w, h) => {
+            g.fillStyle = '#22703a'; g.fillRect(0, 0, w, h);
+            g.fillStyle = '#17542a'; g.fillRect(0, h - 5, w, 2);
+            g.fillStyle = '#9fcf92'; g.fillRect(0, h - 3, w, 3);
+        });
+        const cashTopTex = makeTex(128, 80, (g, w, h) => {
+            g.fillStyle = '#5fae74'; g.fillRect(0, 0, w, h);
+            g.strokeStyle = '#1f5a33'; g.lineWidth = 4; g.strokeRect(6, 6, w - 12, h - 12);
+            g.lineWidth = 2; g.strokeRect(12, 12, w - 24, h - 24);
+            g.fillStyle = '#b9dfc3'; g.beginPath(); g.ellipse(w / 2, h / 2, 22, 22, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+            g.fillStyle = '#2f6e40'; g.font = 'bold 28px Georgia, serif';
+            g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', w / 2, h / 2 + 2);
+            g.font = 'bold 13px Georgia, serif';
+            g.fillText('100', 28, 24); g.fillText('100', w - 28, h - 22);
+        });
+
+        // Textures for ticket-sales stacks.
+        const ticketSideTex = makeTex(64, 16, (g, w, h) => {
+            g.fillStyle = '#c9a35e'; g.fillRect(0, 0, w, h);
+            g.fillStyle = '#8a6a30'; g.fillRect(0, h - 5, w, 3);
+            g.fillStyle = '#e8cf9b'; g.fillRect(0, 0, w, 3);
+        });
+        const ticketTopTex = makeTex(128, 64, (g, w, h) => {
+            g.fillStyle = '#c8372d'; g.fillRect(0, 0, w, h);
+            g.strokeStyle = '#f6dfa6'; g.lineWidth = 2; g.setLineDash([5, 3]);
+            g.strokeRect(5, 5, w - 10, h - 10);
+            g.beginPath(); g.moveTo(94, 5); g.lineTo(94, h - 5); g.stroke();   // Ticket tear-off perforation.
+            g.setLineDash([]);
+            g.fillStyle = '#f6dfa6'; g.font = 'bold 15px Arial, sans-serif';
+            g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillText('ADMIT', 48, 22); g.fillText('ONE', 48, 42);
+            g.font = 'bold 18px Arial, sans-serif'; g.fillText('\u2605', 111, h / 2);
+        });
+
+        // Textures for movie-count stacks (film reels).
+        const reelSideTex = makeTex(64, 64, (g, w, h) => {
+            g.fillStyle = '#16161b'; g.fillRect(0, 0, w, h);
+            g.fillStyle = '#2a2a32';
+            for (let y = 16; y < 52; y += 8) g.fillRect(0, y, w, 1);   // Lines suggest layers of wound film.
+            g.fillStyle = '#b3bac7'; g.fillRect(0, 0, w, 8); g.fillRect(0, h - 8, w, 8);   // Reels' outer flanges.
+            g.fillStyle = '#e4e8ef'; g.fillRect(0, 0, w, 2);
+        });
+        const reelFaceTex = makeTex(128, 128, (g, w, h) => {
+            g.fillStyle = '#c3cad6'; g.fillRect(0, 0, w, h);
+            g.strokeStyle = '#7f8794'; g.lineWidth = 4;
+            g.beginPath(); g.arc(64, 64, 58, 0, Math.PI * 2); g.stroke();
+            g.fillStyle = '#16161b';
+            for (let i = 0; i < 6; i++) {                              // Six openings around the reel hub.
+                const ang = i * Math.PI / 3;
+                g.beginPath(); g.arc(64 + Math.cos(ang) * 36, 64 + Math.sin(ang) * 36, 15, 0, Math.PI * 2); g.fill();
+            }
+            g.fillStyle = '#8b93a1'; g.beginPath(); g.arc(64, 64, 14, 0, Math.PI * 2); g.fill();
+            g.fillStyle = '#16161b'; g.beginPath(); g.arc(64, 64, 5, 0, Math.PI * 2); g.fill();
+        });
+
+        // Shared materials, geometries, and texture-coordinate helpers.
+        const bandGeo = new THREE.BoxGeometry(0.85, 0.28, 0.55);
+        const noDataGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.03, 16);
+        const M = (o) => new THREE.MeshStandardMaterial(o);
+
+        // Repeat side textures vertically so they tile along taller stacks.
+        function repeatSideUV(geo, n, vertexCount) {
+            const uv = geo.attributes.uv;
+            for (let i = 0; i < vertexCount; i++) uv.setY(i, uv.getY(i) * n);
+            geo.userData.disposable = true;
+        }
+        function repeatBoxSideUV(geo, n) {
+            const uv = geo.attributes.uv;
+            [0, 1, 4, 5].forEach(f => { for (let i = f * 4; i < f * 4 + 4; i++) uv.setY(i, uv.getY(i) * n); });
+            geo.userData.disposable = true;
+        }
+
+        function buildCoinStack(group, h) {
+            const n = Math.max(1, Math.round(h / 0.1)), hh = n * 0.1;
+            const geo = new THREE.CylinderGeometry(0.4, 0.4, hh, 24);
+            repeatSideUV(geo, n, 25 * 2);
+            const mats = [
+                M({ map: coinEdgeTex, roughness: 0.35, metalness: 0.35 }),
+                M({ map: coinFaceTex, roughness: 0.35, metalness: 0.35 }),
+                M({ color: 0xc8991a, roughness: 0.5 })
+            ];
+            const m = new THREE.Mesh(geo, mats);
+            m.position.y = hh / 2;
+            group.add(m);
+        }
+
+        function buildCashStack(group, h) {
+            const n = Math.max(1, Math.round(h / 0.07)), hh = n * 0.07;
+            const geo = new THREE.BoxGeometry(0.8, hh, 0.5);
+            repeatBoxSideUV(geo, n);
+            const side = M({ map: cashSideTex, roughness: 0.85 });
+            const mats = [side, side, M({ map: cashTopTex, roughness: 0.8 }), side, side, side];
+            const m = new THREE.Mesh(geo, mats);
+            m.position.y = hh / 2;
+            group.add(m);
+            // Add visible paper bands at regular intervals on tall stacks.
+            for (let y = 1.0; y + 0.2 < hh; y += 2.0) {
+                const band = new THREE.Mesh(bandGeo, M({ color: 0xd9c397, roughness: 0.9 }));
+                band.position.y = y;
+                group.add(band);
+            }
+        }
+
+        function buildTicketStack(group, h, rnd) {
+            const n = Math.max(1, Math.round(h / 0.06)), hh = n * 0.06;
+            const geo = new THREE.BoxGeometry(0.9, hh, 0.48);
+            repeatBoxSideUV(geo, n);
+            const side = M({ map: ticketSideTex, roughness: 0.9 });
+            const mats = [side, side, M({ map: ticketTopTex, roughness: 0.8 }), side, side, side];
+            const m = new THREE.Mesh(geo, mats);
+            m.position.y = hh / 2;
+            m.rotation.y = (rnd() - 0.5) * 0.4;     // Slightly vary ticket-stack orientation.
+            group.add(m);
+        }
+
+        function buildFilmReels(group, h) {
+            const n = Math.max(1, Math.round(h / 0.4)), hh = n * 0.4;
+            const geo = new THREE.CylinderGeometry(0.42, 0.42, hh, 24);
+            repeatSideUV(geo, n, 25 * 2);
+            const mats = [
+                M({ map: reelSideTex, roughness: 0.5, metalness: 0.25 }),
+                M({ map: reelFaceTex, roughness: 0.45, metalness: 0.25 }),
+                M({ color: 0xb3bac7, roughness: 0.5 })
+            ];
+            const m = new THREE.Mesh(geo, mats);
+            m.position.y = hh / 2;
+            group.add(m);
+        }
+
+        const VISUAL_BUILDERS = {
+            'Inflation-Adjusted Gross': buildCoinStack,
+            'Gross': buildCashStack,
+            'Tickets Sold': buildTicketStack,
+            'Movies Released': buildFilmReels
+        };
+
+        function setHighlight(group, on) {
+            group.traverse(o => {
+                if (!o.isMesh) return;
+                [].concat(o.material).forEach(m => m.emissive.setHex(on ? 0x6b4a00 : 0x000000));
+            });
+            group.scale.set(on ? 1.15 : 1, 1, on ? 1.15 : 1);
+        }
+
+        function disposeGroup(group) {
+            group.traverse(o => {
+                if (!o.isMesh) return;
+                [].concat(o.material).forEach(m => m.dispose());
+                if (o.geometry.userData.disposable) o.geometry.dispose();
+            });
+        }
+
+        function rebuild3DScene() {
+            // Dispose of the previous stacks before rebuilding the scene.
+            meshBars.forEach(b => { stage.remove(b); disposeGroup(b); });
+            meshBars = [];
+            hoveredMesh = null;
+            tooltip.style.display = 'none';
+
+            // Show the six featured genres for "ALL", or the single selected genre.
+            let selectedGenres = currentFilters.genre === 'ALL' 
+                ? ["Adventure", "Action", "Drama", "Comedy", "Horror", "Thriller or Suspense"] 
+                : [currentFilters.genre];
+
+            const selectedMetric = currentFilters.metric;
+            const build = VISUAL_BUILDERS[selectedMetric] || buildCoinStack;
+
+            // Use the dataset maximum to scale stack heights consistently.
+            let maxVal = 1;
+            rawDataset.forEach(d => {
+                if (d[selectedMetric] > maxVal) maxVal = d[selectedMetric];
+            });
+
+            selectedGenres.forEach((g, zIdx) => {
+                allYears.forEach((y, xIdx) => {
+                    if (y >= currentFilters.startYear && y <= currentFilters.endYear) {
+                        const rec = rawDataset.find(d => d.Genre === g && d.Year === y);
+                        const val = rec ? rec[selectedMetric] : 0;
+                        const height = rec ? Math.max(0.35, (val / maxVal) * 8.0) : 0;
+                        const rnd = mulberry32(zIdx * 100 + xIdx + 7);
+
+                        const group = new THREE.Group();
+
+                        if (!rec) {
+                            // Mark missing genre/year records with a low-profile placeholder.
+                            const marker = new THREE.Mesh(noDataGeo, M({ color: 0x475569, roughness: 0.8 }));
+                            marker.position.y = 0.015;
+                            group.add(marker);
+                        } else {
+                            build(group, height, rnd);
+                        }
+
+                        // Arrange years along X and genres along Z.
+                        group.position.set(
+                            (xIdx - (allYears.length - 1) / 2) * 1.1,
+                            0,
+                            (zIdx - (selectedGenres.length - 1) / 2) * 2.2
+                        );
+
+                        group.userData = {
+                            genre: g,
+                            year: y,
+                            val: val,
+                            topMovie: rec ? rec['Top Movie'] : 'N/A'
+                        };
+
+                        stage.add(group);
+                        meshBars.push(group);
+                    }
+                });
+            });
+        }
+
+        // Raycast against the stacks to identify the item under the pointer.
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2(2, 2);   // Start outside the canvas so no stack is initially hovered.
+        const tooltip = document.getElementById('webgl-tooltip');
+        let hoveredMesh = null;
+
+        container.addEventListener('mousemove', (e) => {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / container.clientWidth) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / container.clientHeight) * 2 + 1;
+        });
+
+        // Auto-rotation pauses during interaction and briefly after it ends.
+        const AUTO_ROTATE_SPEED = 0.08;      // radians per second (~78 s per full turn)
+        const RESUME_DELAY_MS = 2500;
+        let dragging = false, lastX = 0, lastY = 0;
+        let lastInteraction = -1e9;
+        let lastFrameTime = performance.now();
+
+        // Pointer drag rotates the stage; the wheel changes camera distance.
+        renderer.domElement.style.cursor = 'grab';
+        renderer.domElement.style.touchAction = 'none';
+        renderer.domElement.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const distance = camera.position.length();
+            const zoomFactor = Math.exp(Math.max(-0.7, Math.min(0.7, e.deltaY * 0.001)));
+            camera.position.setLength(Math.max(16, Math.min(45, distance * zoomFactor)));
+            lastInteraction = performance.now();
+        }, { passive: false });
+        renderer.domElement.addEventListener('pointerdown', (e) => {
+            dragging = true; lastX = e.clientX; lastY = e.clientY;
+            lastInteraction = performance.now();
+            renderer.domElement.style.cursor = 'grabbing';
+        });
+        window.addEventListener('pointerup', () => {
+            if (dragging) lastInteraction = performance.now();
+            dragging = false;
+            renderer.domElement.style.cursor = 'grab';
+        });
+        window.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            stage.rotation.y += (e.clientX - lastX) * 0.005;
+            stage.rotation.x = Math.max(-0.4, Math.min(0.4, stage.rotation.x + (e.clientY - lastY) * 0.003));
+            lastX = e.clientX; lastY = e.clientY;
+            lastInteraction = performance.now();
+        });
+        container.addEventListener('pointerleave', () => { mouse.set(2, 2); });
+
+        function animate3D() {
+            requestAnimationFrame(animate3D);
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(meshBars, true);
+
+            if (intersects.length > 0) {
+                let hit = intersects[0].object;
+                while (hit && !hit.userData.genre) hit = hit.parent;
+                if (hit && hoveredMesh !== hit) {
+                    if (hoveredMesh) setHighlight(hoveredMesh, false);
+                    hoveredMesh = hit;
+                    setHighlight(hoveredMesh, true);
+
+                    tooltip.style.display = 'block';
+                    tooltip.innerHTML = `
+                        <strong>Genre:</strong> ${hoveredMesh.userData.genre}<br>
+                        <strong>Year:</strong> ${hoveredMesh.userData.year}<br>
+                        <strong>${currentFilters.metric}:</strong> ${hoveredMesh.userData.val.toLocaleString()}<br>
+                        <span class="text-amber-400">#1 Movie: ${hoveredMesh.userData.topMovie}</span>
+                    `;
+                }
+            } else {
+                if (hoveredMesh) {
+                    setHighlight(hoveredMesh, false);
+                    hoveredMesh = null;
+                    tooltip.style.display = 'none';
+                }
+            }
+
+            // Resume slow rotation only when the user is not interacting with the scene.
+            const now = performance.now();
+            const dt = Math.min(0.05, (now - lastFrameTime) / 1000);
+            lastFrameTime = now;
+            if (!dragging && !hoveredMesh && now - lastInteraction > RESUME_DELAY_MS) {
+                stage.rotation.y += AUTO_ROTATE_SPEED * dt;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // 3. Historical trend chart
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        let trendChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        align: 'end',
+                        labels: {
+                            color: '#94a3b8',
+                            font: { size: 10 },
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                }
+            }
+        });
+
+        function update2DChart(filteredData) {
+            const yearsSpan = allYears.filter(y => y >= currentFilters.startYear && y <= currentFilters.endYear);
+            
+            // Initialize the selected year range, then total the chosen metric by year.
+            const grouped = {};
+            yearsSpan.forEach(y => grouped[y] = 0);
+
+            filteredData.forEach(d => {
+                if (grouped[d.Year] !== undefined) {
+                    grouped[d.Year] += d[currentFilters.metric] || 0;
+                }
+            });
+
+            trendChart.data.labels = yearsSpan;
+            trendChart.data.datasets = [{
+                label: `${currentFilters.metric} (${currentFilters.genre})`,
+                data: yearsSpan.map(y => grouped[y]),
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                fill: true,
+                tension: 0.3
+            }];
+            trendChart.update();
+        }
+
+        // 4. Filtering, dashboard updates, and startup
+        function refreshDashboard() {
+            // Read the current filter values from the controls.
+            currentFilters.genre = document.getElementById('genre-select').value;
+            currentFilters.metric = document.getElementById('metric-select').value;
+            currentFilters.startYear = parseInt(document.getElementById('start-year').value) || 1995;
+            currentFilters.endYear = parseInt(document.getElementById('end-year').value) || 2018;
+            currentFilters.searchQuery = document.getElementById('movie-search').value.toLowerCase().trim();
+
+            document.getElementById('year-range-label').textContent = `${currentFilters.startYear} - ${currentFilters.endYear}`;
+
+            // Apply genre, year, and movie-title filters to the source records.
+            const filtered = rawDataset.filter(d => {
+                const matchGenre = currentFilters.genre === 'ALL' || d.Genre === currentFilters.genre;
+                const matchYear = d.Year >= currentFilters.startYear && d.Year <= currentFilters.endYear;
+                const matchMovie = !currentFilters.searchQuery || d['Top Movie'].toLowerCase().includes(currentFilters.searchQuery);
+                return matchGenre && matchYear && matchMovie;
+            });
+
+            // Recalculate totals and identify the highest-grossing listed movie.
+            let totalGross = 0;
+            let totalTickets = 0;
+            let totalMovies = 0;
+            let topMovie = '-';
+            let topMovieGross = 0;
+
+            filtered.forEach(d => {
+                totalGross += d['Inflation-Adjusted Gross'] || 0;
+                totalTickets += d['Tickets Sold'] || 0;
+                totalMovies += d['Movies Released'] || 0;
+                if ((d['Top Movie Gross (That Year)'] || 0) > topMovieGross) {
+                    topMovieGross = d['Top Movie Gross (That Year)'];
+                    topMovie = d['Top Movie'];
+                }
+            });
+
+            // Refresh the summary cards.
+            document.getElementById('kpi-total-gross').textContent = `$${(totalGross / 1e9).toFixed(2)}B`;
+            document.getElementById('kpi-tickets').textContent = totalTickets.toLocaleString();
+            document.getElementById('kpi-movies').textContent = totalMovies.toLocaleString();
+            document.getElementById('kpi-movies-sub').textContent = `Avg $${totalMovies ? (totalGross / totalMovies / 1e6).toFixed(1) : 0}M / Movie`;
+            document.getElementById('kpi-top-movie').textContent = topMovie;
+            document.getElementById('kpi-top-movie-sub').textContent = `$${(topMovieGross / 1e6).toFixed(1)}M Gross`;
+
+            // Rebuild the table from the same filtered records.
+            const tbody = document.getElementById('data-table-body');
+            tbody.innerHTML = '';
+            filtered.forEach(d => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-800/50 transition';
+                tr.innerHTML = `
+                    <td class="p-2 font-medium text-slate-200">${d.Genre}</td>
+                    <td class="p-2 text-slate-400">${d.Year}</td>
+                    <td class="p-2 text-right font-mono text-blue-400">$${(d['Inflation-Adjusted Gross'] / 1e6).toFixed(1)}M</td>
+                    <td class="p-2 text-amber-300 truncate max-w-[120px]">${d['Top Movie']}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('row-count-badge').textContent = `${filtered.length} rows`;
+
+            // Keep the 3D scene and trend chart in sync with the filters.
+            rebuild3DScene();
+            update2DChart(filtered);
+        }
+
+        // Refresh the dashboard when a filter changes; reset restores defaults.
+        document.getElementById('genre-select').addEventListener('change', refreshDashboard);
+        document.getElementById('metric-select').addEventListener('change', refreshDashboard);
+        document.getElementById('start-year').addEventListener('change', refreshDashboard);
+        document.getElementById('end-year').addEventListener('change', refreshDashboard);
+        document.getElementById('movie-search').addEventListener('input', refreshDashboard);
+
+        document.getElementById('reset-filters').addEventListener('click', () => {
+            document.getElementById('genre-select').value = 'ALL';
+            document.getElementById('metric-select').value = 'Inflation-Adjusted Gross';
+            document.getElementById('start-year').value = 1995;
+            document.getElementById('end-year').value = 2018;
+            document.getElementById('movie-search').value = '';
+            refreshDashboard();
+        });
+
+        // Keep the camera projection and renderer aligned with the canvas size.
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // Render the initial dashboard and start the 3D animation loop.
+        refreshDashboard();
+        animate3D();
+    </script>
+</body>
+</html>
