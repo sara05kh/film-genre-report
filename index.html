@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Film Genre 3D Revenue Landscape (1995-2018)</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #0d0f12; /* Sleek dark theme */
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #tooltip {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 12px 18px;
+            border-radius: 8px;
+            pointer-events: none;
+            display: none;
+            font-size: 13px;
+            border-left: 4px solid #3b82f6;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="tooltip">Hover over a node to inspect genre performance</div>
+    <div id="canvas-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // 1. Scene & Camera Setup
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0d0f12);
+
+        // Angle camera to show depth across Years (X) and Genres (Z)
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 18, 22);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        // 2. Ambient and Directional Lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 40, 20);
+        scene.add(dirLight);
+
+        // 3. Mock Landscape Grid (Genres vs Years)
+        const genres = ["Action", "Adventure", "Comedy", "Drama", "Horror", "Sci-Fi"];
+        const years = [1995, 2000, 2005, 2010, 2015, 2018];
+        const bars = [];
+
+        // Sample data representing Adjusted Gross ($ Millions)
+        const sampleData = {
+            "Action": [1200, 1800, 2400, 3100, 4200, 4800],
+            "Adventure": [1500, 2100, 3500, 3900, 4100, 4600],
+            "Comedy": [1800, 2200, 2000, 1700, 1400, 1100],
+            "Drama": [2000, 1900, 1800, 1500, 1300, 1000],
+            "Horror": [400, 600, 800, 950, 1200, 1600],
+            "Sci-Fi": [800, 1100, 1600, 2500, 3800, 4300]
+        };
+
+        const boxGeo = new THREE.BoxGeometry(0.8, 1, 0.8);
+
+        // Generate 3D grid layout
+        genres.forEach((genre, zIdx) => {
+            const rowData = sampleData[genre];
+            rowData.forEach((val, xIdx) => {
+                const height = val / 600; // Scale height for visual clarity
+                
+                // Color ramp: Blue for high revenue, Gray/Dark Blue for lower
+                const hue = 0.6 - (height / 10) * 0.4; 
+                const material = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color().setHSL(hue, 0.8, 0.5),
+                    roughness: 0.2,
+                    metalness: 0.5
+                });
+
+                const bar = new THREE.Mesh(boxGeo, material);
+                
+                // Position grid on X (Years) and Z (Genres) axes
+                const posX = (xIdx - (years.length - 1) / 2) * 2.2;
+                const posZ = (zIdx - (genres.length - 1) / 2) * 2.2;
+                
+                bar.scale.y = height;
+                bar.position.set(posX, height / 2, posZ);
+
+                // Attach metadata
+                bar.userData = {
+                    genre: genre,
+                    year: years[xIdx],
+                    gross: val
+                };
+
+                scene.add(bar);
+                bars.push(bar);
+            });
+        });
+
+        // Add 3D Grid Floor
+        const gridHelper = new THREE.GridHelper(20, 20, 0x334155, 0x1e293b);
+        gridHelper.position.y = 0;
+        scene.add(gridHelper);
+
+        // 4. Raycasting & Interaction
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const tooltip = document.getElementById('tooltip');
+        let hoveredBar = null;
+
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        // 5. Render & Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(bars);
+
+            if (intersects.length > 0) {
+                const hit = intersects[0].object;
+                if (hoveredBar !== hit) {
+                    if (hoveredBar) hoveredBar.material.emissive.setHex(0x000000);
+                    hoveredBar = hit;
+                    hoveredBar.material.emissive.setHex(0x3b82f6); // Highlight blue
+
+                    tooltip.style.display = 'block';
+                    tooltip.innerHTML = `
+                        <strong>Genre:</strong> ${hoveredBar.userData.genre}<br>
+                        <strong>Year:</strong> ${hoveredBar.userData.year}<br>
+                        <strong>Adj. Gross:</strong> $${hoveredBar.userData.gross.toLocaleString()}M
+                    `;
+                }
+            } else {
+                if (hoveredBar) {
+                    hoveredBar.material.emissive.setHex(0x000000);
+                    hoveredBar = null;
+                    tooltip.style.display = 'none';
+                }
+            }
+
+            // Slow, subtle rotation so the 3D depth is immediately apparent
+            scene.rotation.y += 0.0015;
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
